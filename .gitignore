@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Xcode & Swift
+build/
+DerivedData/
+*.moved-aside
+*.xcuserstate
+**/*.xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Flutter & Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android & Gradle
+android/.gradle/
+android/app/build/
+android/local.properties
+android/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.dex
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs & Temporary files
+*.log
+*.tmp
+tmp/
+
+# Documentation
+docs/
