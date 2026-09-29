@@ -41,6 +41,7 @@ class ControlSocketClient(private val context: Context) {
     companion object {
         private const val TAG = "CordaControlClient"
         private const val CONNECT_TIMEOUT_MS = 6000
+        private const val MAX_BUFFER_SIZE = 10 * 1024 * 1024 // 10 MB maximum NDJSON line
     }
 
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -48,6 +49,10 @@ class ControlSocketClient(private val context: Context) {
     private var reader: BufferedReader? = null
     private var writer: BufferedWriter? = null
     private var readJob: Job? = null
+    private var heartbeatJob: Job? = null
+    private var reconnectJob: Job? = null
+    private var missedPongs: Int = 0
+    private var heartbeatSeq: Int = 1
 
     var isConnected: Boolean = false
         private set
@@ -56,6 +61,12 @@ class ControlSocketClient(private val context: Context) {
         private set
 
     var connectedPort: Int = 54321
+        private set
+
+    var lastConnectedHost: String? = null
+        private set
+
+    var lastConnectedPort: Int = 54321
         private set
 
     private val trustedStore = TrustedDeviceStore(context)
@@ -132,13 +143,19 @@ class ControlSocketClient(private val context: Context) {
                         )
                         trustedStore.saveTrustedDevice(trusted)
 
+                        lastConnectedHost = host
+                        lastConnectedPort = port
+                        missedPongs = 0
+
                         Log.i(TAG, "Pairing SUKSES dengan Mac '$macName' ($macFp)!")
                         CordaEventBus.postServiceState(
                             ServiceState(isRunning = true, statusMessage = "Terhubung dengan $macName")
                         )
+                        CordaEventBus.postApIsolation(false)
 
-                        // Start continuous read loop
+                        // Start continuous read loop and heartbeat
                         startReadLoop()
+                        startHeartbeatLoop()
 
                         withContext(Dispatchers.Main) {
                             onResult?.invoke(true, "Pairing berhasil!")
@@ -190,12 +207,15 @@ class ControlSocketClient(private val context: Context) {
                 writer = BufferedWriter(OutputStreamWriter(newSocket.getOutputStream(), Charsets.UTF_8))
                 connectedHost = host
                 connectedPort = port
+                lastConnectedHost = host
+                lastConnectedPort = port
                 isConnected = true
+                missedPongs = 0
 
                 // Send initial heartbeat ping to establish connection
                 val ping = JSONObject().apply {
                     put("type", "HEARTBEAT_PING")
-                    put("seq", 1)
+                    put("seq", heartbeatSeq++)
                     put("timestamp", getIso8601Timestamp())
                 }
                 writeLine(ping.toString())
@@ -203,8 +223,10 @@ class ControlSocketClient(private val context: Context) {
                 CordaEventBus.postServiceState(
                     ServiceState(isRunning = true, statusMessage = "Terhubung dengan Mac ($host)")
                 )
+                CordaEventBus.postApIsolation(false)
 
                 startReadLoop()
+                startHeartbeatLoop()
             } catch (e: Exception) {
                 Log.w(TAG, "Auto-connect ke $host:$port gagal: ${e.message}")
                 disconnect()
@@ -219,6 +241,10 @@ class ControlSocketClient(private val context: Context) {
             try {
                 while (isActive) {
                     val line = r.readLine() ?: break
+                    if (line.length > MAX_BUFFER_SIZE) {
+                        Log.e(TAG, "Payload melebihi batas 10MB (${line.length} bytes). Pesan diabaikan.")
+                        continue
+                    }
                     if (line.isNotEmpty()) {
                         handleIncomingMessage(line)
                     }
@@ -226,7 +252,94 @@ class ControlSocketClient(private val context: Context) {
             } catch (e: Exception) {
                 Log.d(TAG, "Read loop closed: ${e.message}")
             } finally {
+                val wasConnected = isConnected
+                val host = connectedHost ?: lastConnectedHost
+                val port = connectedPort
                 disconnect()
+
+                if (wasConnected && host != null) {
+                    Log.i(TAG, "Socket terputus tiba-tiba. Menjadwalkan silent reconnect ke $host:$port...")
+                    scheduleSilentReconnect(host, port)
+                }
+            }
+        }
+    }
+
+    private fun startHeartbeatLoop() {
+        heartbeatJob?.cancel()
+        missedPongs = 0
+        heartbeatJob = scope.launch {
+            while (isActive && isConnected) {
+                kotlinx.coroutines.delay(15000L) // 15 detik
+                if (!isConnected) break
+
+                if (missedPongs >= 3) {
+                    Log.w(TAG, "Heartbeat timeout! 3 PONG tidak diterima (45 detik). Menghentikan socket dan silent reconnect...")
+                    CordaEventBus.postServiceState(
+                        ServiceState(isRunning = true, statusMessage = "Menghubungkan ulang...")
+                    )
+                    val host = connectedHost ?: lastConnectedHost
+                    val port = connectedPort
+                    disconnect()
+                    if (host != null) {
+                        scheduleSilentReconnect(host, port)
+                    }
+                    break
+                }
+
+                missedPongs++
+                val ping = JSONObject().apply {
+                    put("type", "HEARTBEAT_PING")
+                    put("seq", heartbeatSeq++)
+                    put("timestamp", getIso8601Timestamp())
+                }
+                writeLine(ping.toString())
+                Log.d(TAG, "Mengirim HEARTBEAT_PING seq=${heartbeatSeq - 1} (missed: $missedPongs)")
+            }
+        }
+    }
+
+    /**
+     * Silent Auto-Reconnect with exponential backoff (1s, 2s, 5s)
+     */
+    fun scheduleSilentReconnect(host: String, port: Int = 54321) {
+        if (isConnected) return
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            val backoffDelays = listOf(1000L, 2000L, 5000L)
+            for ((attempt, delayMs) in backoffDelays.withIndex()) {
+                if (isConnected) break
+                Log.i(TAG, "Silent reconnect percobaan #${attempt + 1} dalam ${delayMs}ms...")
+                kotlinx.coroutines.delay(delayMs)
+                if (isConnected) break
+
+                try {
+                    Log.i(TAG, "Mencoba reconnect ke $host:$port...")
+                    val newSocket = Socket()
+                    newSocket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+
+                    socket = newSocket
+                    reader = BufferedReader(InputStreamReader(newSocket.getInputStream(), Charsets.UTF_8))
+                    writer = BufferedWriter(OutputStreamWriter(newSocket.getOutputStream(), Charsets.UTF_8))
+                    connectedHost = host
+                    connectedPort = port
+                    lastConnectedHost = host
+                    lastConnectedPort = port
+                    isConnected = true
+                    missedPongs = 0
+
+                    CordaEventBus.postServiceState(
+                        ServiceState(isRunning = true, statusMessage = "Terhubung dengan Mac ($host)")
+                    )
+                    CordaEventBus.postApIsolation(false)
+
+                    startReadLoop()
+                    startHeartbeatLoop()
+                    Log.i(TAG, "Silent reconnect berhasil!")
+                    break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Percobaan reconnect ke $host:$port gagal: ${e.message}")
+                }
             }
         }
     }
@@ -282,7 +395,8 @@ class ControlSocketClient(private val context: Context) {
                     dataStreamClient.startReceiving(json, host, FileDataStreamClient.DATA_PORT)
                 }
                 "HEARTBEAT_PONG" -> {
-                    Log.d(TAG, "Heartbeat PONG diterima dari Mac.")
+                    missedPongs = 0
+                    Log.d(TAG, "Heartbeat PONG diterima dari Mac (koneksi aktif).")
                 }
                 else -> {
                     Log.d(TAG, "Pesan kontrol tidak dikenal: $type")
@@ -346,6 +460,8 @@ class ControlSocketClient(private val context: Context) {
 
     fun disconnect() {
         try {
+            heartbeatJob?.cancel()
+            heartbeatJob = null
             readJob?.cancel()
             readJob = null
             reader?.close()
@@ -357,6 +473,7 @@ class ControlSocketClient(private val context: Context) {
         writer = null
         isConnected = false
         connectedHost = null
+        missedPongs = 0
     }
 
     private fun getLocalDeviceId(): String {

@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Combine
+import AppKit
 
 /// Discovered network peer on the local subnet via Bonjour mDNS.
 public struct DiscoveredDevice: Identifiable, Hashable {
@@ -32,11 +33,13 @@ public final class BonjourDiscoveryManager: ObservableObject {
     @Published public private(set) var isAdvertising: Bool = false
     @Published public private(set) var isBrowsing: Bool = false
     @Published public private(set) var discoveredDevices: [DiscoveredDevice] = []
+    @Published public private(set) var isPossibleAPIsolation: Bool = false
 
     private var listener: NWListener?
     private var browser: NWBrowser?
     private let queue = DispatchQueue(label: "com.corda.mac.bonjour", qos: .userInitiated)
     private var localDeviceId: String
+    private var apIsolationTimer: DispatchSourceTimer?
 
     private init() {
         // Retrieve or generate persistent device UUID
@@ -47,6 +50,27 @@ public final class BonjourDiscoveryManager: ObservableObject {
             let newId = UUID().uuidString
             UserDefaults.standard.set(newId, forKey: defaultsKey)
             self.localDeviceId = newId
+        }
+
+        // Register system wake observer for instant auto-healing
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            #if DEBUG
+            print("[Bonjour] System woke from sleep! Triggering auto-healing...")
+            #endif
+            self?.handleSystemWake()
+        }
+    }
+
+    /// Auto-healing trigger when Mac wakes from sleep/clamshell
+    public func handleSystemWake() {
+        ControlSessionServer.shared.flushStaleConnections()
+        stopBrowsing()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.startBrowsing()
         }
     }
 
@@ -155,13 +179,36 @@ public final class BonjourDiscoveryManager: ObservableObject {
 
         self.browser = nwBrowser
         nwBrowser.start(queue: queue)
+        scheduleAPIsolationCheck()
     }
 
     /// Stop browsing.
     public func stopBrowsing() {
+        apIsolationTimer?.cancel()
+        apIsolationTimer = nil
         browser?.cancel()
         browser = nil
         isBrowsing = false
+        isPossibleAPIsolation = false
+    }
+
+    private func scheduleAPIsolationCheck() {
+        apIsolationTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 10.0)
+        timer.setEventHandler { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.isBrowsing && self.discoveredDevices.isEmpty && ControlSessionServer.shared.connectedPeers.isEmpty {
+                    self.isPossibleAPIsolation = true
+                    #if DEBUG
+                    print("[Bonjour] 10s elapsed with 0 discovered devices. Flagging possible AP Isolation.")
+                    #endif
+                }
+            }
+        }
+        timer.resume()
+        self.apIsolationTimer = timer
     }
 
     private func handleBrowseResults(_ results: Set<NWBrowser.Result>) {
@@ -194,6 +241,9 @@ public final class BonjourDiscoveryManager: ObservableObject {
 
         DispatchQueue.main.async {
             self.discoveredDevices = devices
+            if !devices.isEmpty {
+                self.isPossibleAPIsolation = false
+            }
         }
     }
 }

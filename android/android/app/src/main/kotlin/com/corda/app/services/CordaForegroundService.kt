@@ -5,9 +5,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -21,6 +27,7 @@ import com.corda.app.events.DiscoveredDevice
 import com.corda.app.events.ServiceState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -55,6 +62,12 @@ class CordaForegroundService : Service() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var isDiscovering = false
 
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var screenReceiver: BroadcastReceiver? = null
+    private var apIsolationJob: Job? = null
+    private var hasDiscoveredAnyPeer = false
+
     var socketClient: ControlSocketClient? = null
         private set
 
@@ -68,6 +81,8 @@ class CordaForegroundService : Service() {
         initNsdManager()
         observeClipboardEvents()
         observeTransferEvents()
+        registerNetworkCallback()
+        registerScreenReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -82,6 +97,7 @@ class CordaForegroundService : Service() {
         Log.i(TAG, "Memulai CordaForegroundService dalam mode hening (IMPORTANCE_MIN)...")
         startSilentForeground()
         startMdnsDiscovery()
+        scheduleAPIsolationCheck()
         isRunning = true
         CordaEventBus.postServiceState(ServiceState(isRunning = true, statusMessage = "Aktif di latar belakang"))
 
@@ -222,6 +238,10 @@ class CordaForegroundService : Service() {
                     deviceId = attributes["dev_id"]?.let { String(it) } ?: name
                 }
 
+                hasDiscoveredAnyPeer = true
+                apIsolationJob?.cancel()
+                CordaEventBus.postApIsolation(false)
+
                 val device = DiscoveredDevice(
                     id = deviceId,
                     name = name,
@@ -290,8 +310,94 @@ class CordaForegroundService : Service() {
         client.connectAndPair(host, port, pin, fingerprint, callback)
     }
 
+    private fun scheduleAPIsolationCheck() {
+        apIsolationJob?.cancel()
+        apIsolationJob = serviceScope.launch {
+            kotlinx.coroutines.delay(10000L) // 10 detik
+            val isConnected = socketClient?.isConnected == true
+            if (!isConnected && !hasDiscoveredAnyPeer) {
+                Log.w(TAG, "Wi-Fi aktif namun 0 peer ditemukan dalam 10s. Mengindikasikan AP Isolation.")
+                CordaEventBus.postApIsolation(true)
+            } else {
+                CordaEventBus.postApIsolation(false)
+            }
+        }
+    }
+
+    private fun registerNetworkCallback() {
+        try {
+            connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    Log.i(TAG, "Jaringan Wi-Fi aktif. Memulai mDNS discovery dan silent auto-connect...")
+                    hasDiscoveredAnyPeer = false
+                    startMdnsDiscovery()
+                    scheduleAPIsolationCheck()
+
+                    val client = socketClient
+                    if (client != null && !client.isConnected) {
+                        val host = client.lastConnectedHost
+                        val port = client.lastConnectedPort
+                        if (host != null) {
+                            client.scheduleSilentReconnect(host, port)
+                        }
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    Log.w(TAG, "Jaringan Wi-Fi terputus.")
+                    apIsolationJob?.cancel()
+                    CordaEventBus.postApIsolation(false)
+                    socketClient?.disconnect()
+                    CordaEventBus.postServiceState(ServiceState(isRunning = true, statusMessage = "Menunggu Wi-Fi..."))
+                }
+            }
+            networkCallback?.let { connectivityManager?.registerNetworkCallback(request, it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal mendaftarkan NetworkCallback", e)
+        }
+    }
+
+    private fun registerScreenReceiver() {
+        screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_ON) {
+                    Log.i(TAG, "Layar menyala (ACTION_SCREEN_ON). Memicu silent reconnect & mDNS refresh...")
+                    val client = socketClient
+                    if (client != null && !client.isConnected) {
+                        val host = client.lastConnectedHost
+                        val port = client.lastConnectedPort
+                        if (host != null) {
+                            client.scheduleSilentReconnect(host, port)
+                        } else {
+                            startMdnsDiscovery()
+                            scheduleAPIsolationCheck()
+                        }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
+        registerReceiver(screenReceiver, filter)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        apIsolationJob?.cancel()
+        apIsolationJob = null
+
+        try {
+            networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
+        } catch (_: Exception) {}
+
+        try {
+            screenReceiver?.let { unregisterReceiver(it) }
+        } catch (_: Exception) {}
+
         socketClient?.disconnect()
         instance = null
         isRunning = false

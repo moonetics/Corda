@@ -51,16 +51,17 @@ class FileDataStreamClient(private val context: Context) {
             var socket: Socket? = null
             var tempFile: File? = null
             var fileOutputStream: FileOutputStream? = null
+            var transferIdStr = metadata.optString("transfer_id", UUID.randomUUID().toString())
+            var currentFileIdx = 0
+            var totalFiles = metadata.optInt("total_files", 1)
 
             try {
-                val transferIdStr = metadata.optString("transfer_id", UUID.randomUUID().toString())
                 val transferUuid = try {
                     UUID.fromString(transferIdStr)
                 } catch (_: Exception) {
                     UUID.randomUUID()
                 }
 
-                val totalFiles = metadata.optInt("total_files", 1)
                 val totalBytes = metadata.optLong("total_bytes", 0L)
                 val filesArray = metadata.optJSONArray("files")
 
@@ -205,9 +206,26 @@ class FileDataStreamClient(private val context: Context) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error dalam stream biner receiver: ${e.message}", e)
+                CordaEventBus.postTransferEvent(
+                    TransferProgressEvent(
+                        transferId = transferIdStr,
+                        fileName = "Transfer Terputus",
+                        direction = "incoming",
+                        fileIndex = currentFileIdx,
+                        totalFiles = totalFiles,
+                        progressPercent = 0,
+                        speedMBs = 0.0,
+                        isCompleted = false
+                    )
+                )
             } finally {
                 try { fileOutputStream?.close() } catch (_: Exception) {}
-                try { tempFile?.delete() } catch (_: Exception) {}
+                try {
+                    if (tempFile?.exists() == true) {
+                        tempFile?.delete()
+                        Log.i(TAG, "Membersihkan berkas sementara .part: ${tempFile?.name}")
+                    }
+                } catch (_: Exception) {}
                 try { socket?.close() } catch (_: Exception) {}
             }
         }
@@ -225,8 +243,8 @@ class FileDataStreamClient(private val context: Context) {
     ) {
         scope.launch {
             var socket: Socket? = null
+            val transferId = UUID.randomUUID()
             try {
-                val transferId = UUID.randomUUID()
                 var totalBytes = 0L
                 val fileItems = mutableListOf<JSONObject>()
 
@@ -368,6 +386,18 @@ class FileDataStreamClient(private val context: Context) {
                 Log.i(TAG, "Pengiriman file ke Mac selesai sukses!")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saat mengirim file: ${e.message}", e)
+                CordaEventBus.postTransferEvent(
+                    TransferProgressEvent(
+                        transferId = transferId.toString(),
+                        fileName = "Transfer Terputus",
+                        direction = "outgoing",
+                        fileIndex = 0,
+                        totalFiles = files.size,
+                        progressPercent = 0,
+                        speedMBs = 0.0,
+                        isCompleted = false
+                    )
+                )
             } finally {
                 try { socket?.close() } catch (_: Exception) {}
             }

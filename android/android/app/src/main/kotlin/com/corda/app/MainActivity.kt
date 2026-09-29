@@ -33,11 +33,13 @@ class MainActivity : FlutterActivity() {
         private const val CLIPBOARD_EVENT_CHANNEL = "com.corda.app/clipboard_events"
         private const val DISCOVERY_EVENT_CHANNEL = "com.corda.app/discovery_events"
         private const val TRANSFER_EVENT_CHANNEL = "com.corda.app/transfer_events"
+        private const val ISOLATION_EVENT_CHANNEL = "com.corda.app/isolation_events"
     }
 
     private var clipboardJob: Job? = null
     private var discoveryJob: Job? = null
     private var transferJob: Job? = null
+    private var isolationJob: Job? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -205,6 +207,25 @@ class MainActivity : FlutterActivity() {
                 }
             }
         )
+
+        // Isolation EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, ISOLATION_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    isolationJob?.cancel()
+                    isolationJob = CoroutineScope(Dispatchers.Main).launch {
+                        CordaEventBus.isolationEvents.collect { event ->
+                            events?.success(event.isSuspected)
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    isolationJob?.cancel()
+                    isolationJob = null
+                }
+            }
+        )
     }
 
     private fun startCordaService() {
@@ -299,5 +320,7 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
         clipboardJob?.cancel()
         discoveryJob?.cancel()
+        transferJob?.cancel()
+        isolationJob?.cancel()
     }
 }

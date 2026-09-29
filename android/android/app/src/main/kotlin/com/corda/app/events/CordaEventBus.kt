@@ -41,6 +41,10 @@ data class TransferProgressEvent(
     val isCompleted: Boolean
 )
 
+data class ApIsolationEvent(
+    val isSuspected: Boolean
+)
+
 /**
  * Thread-safe Reactive Event Bus linking Android native services
  * (ClipboardAccessibilityService, CordaForegroundService, and MainActivity).
@@ -76,6 +80,13 @@ object CordaEventBus {
     )
     val transferEvents: SharedFlow<TransferProgressEvent> = _transferEvents.asSharedFlow()
 
+    private val _isolationEvents = MutableSharedFlow<ApIsolationEvent>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val isolationEvents: SharedFlow<ApIsolationEvent> = _isolationEvents.asSharedFlow()
+
     fun postClipboardEvent(event: ClipboardCopiedEvent) {
         scope.launch {
             _clipboardEvents.emit(event)
@@ -97,6 +108,12 @@ object CordaEventBus {
     fun postTransferEvent(event: TransferProgressEvent) {
         scope.launch {
             _transferEvents.emit(event)
+        }
+    }
+
+    fun postApIsolation(isSuspected: Boolean) {
+        scope.launch {
+            _isolationEvents.emit(ApIsolationEvent(isSuspected))
         }
     }
 }

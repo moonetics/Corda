@@ -371,9 +371,30 @@ public final class FileStreamingManager: ObservableObject {
         if let temp = currentTempFileURL {
             try? FileManager.default.removeItem(at: temp)
             currentTempFileURL = nil
+            #if DEBUG
+            print("[DataStream] Temporary .part file deleted on interrupted session: \(temp.lastPathComponent)")
+            #endif
         }
         activeDataConnection?.cancel()
         activeDataConnection = nil
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let active = self.activeTransfer, !active.isCompleted {
+                self.activeTransfer = ActiveTransferProgress(
+                    id: active.id,
+                    direction: active.direction,
+                    currentFileName: "Transfer Terputus",
+                    totalFiles: active.totalFiles,
+                    currentFileIndex: active.currentFileIndex,
+                    totalBytes: active.totalBytes,
+                    transferredBytes: active.transferredBytes,
+                    progressFraction: active.progressFraction,
+                    speedMBs: 0.0,
+                    isCompleted: true
+                )
+            }
+        }
     }
 
     // MARK: - Binary Frame Sender (Mac -> Android)

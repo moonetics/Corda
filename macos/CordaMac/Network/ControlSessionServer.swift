@@ -41,8 +41,59 @@ public final class ControlSessionServer: ObservableObject {
 
     private let queue = DispatchQueue(label: "com.corda.mac.control.server", qos: .userInitiated)
     private var peerBuffers: [ObjectIdentifier: Data] = [:]
+    private var sweepTimer: DispatchSourceTimer?
+    private let maxBufferSize = 10 * 1024 * 1024 // 10 MB maximum NDJSON buffer
 
-    private init() {}
+    private init() {
+        startSweepTimer()
+    }
+
+    private func startSweepTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 15, repeating: 15)
+        timer.setEventHandler { [weak self] in
+            self?.checkDeadConnections()
+        }
+        timer.resume()
+        self.sweepTimer = timer
+    }
+
+    private func checkDeadConnections() {
+        let now = Date()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            var toRemove: [ConnectedPeer] = []
+            for peer in self.connectedPeers {
+                if now.timeIntervalSince(peer.lastActive) > 45.0 {
+                    #if DEBUG
+                    print("[ControlServer] Peer \(peer.name) missed 3 heartbeats (idle > 45s). Tearing down connection.")
+                    #endif
+                    toRemove.append(peer)
+                }
+            }
+            for dead in toRemove {
+                dead.connection.cancel()
+                self.removeConnection(dead.connection)
+            }
+        }
+    }
+
+    /// Flush all stale connections when Mac wakes from sleep.
+    public func flushStaleConnections() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.peerBuffers.removeAll()
+            DispatchQueue.main.async {
+                for peer in self.connectedPeers {
+                    peer.connection.cancel()
+                }
+                self.connectedPeers.removeAll()
+                #if DEBUG
+                print("[ControlServer] Flushed all stale connections on system wake.")
+                #endif
+            }
+        }
+    }
 
     /// Handle an incoming client connection routed from NWListener.
     public func handleNewConnection(_ connection: NWConnection) {
@@ -116,6 +167,11 @@ public final class ControlSessionServer: ObservableObject {
     private func processIncomingData(_ newData: Data, from connection: NWConnection, peer: ConnectedPeer) {
         let objId = ObjectIdentifier(connection)
         var buffer = peerBuffers[objId] ?? Data()
+
+        // Protect against buffer overflow (cap at maxBufferSize)
+        if buffer.count + newData.count > maxBufferSize {
+            buffer.removeAll()
+        }
         buffer.append(newData)
 
         // Split buffer by newline '\n' (0x0A)

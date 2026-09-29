@@ -95,6 +95,33 @@ public struct MenuBarPopupView: View {
                             DeviceRowView(device: device)
                         }
                     }
+
+                    if discovery.isPossibleAPIsolation && discovery.discoveredDevices.isEmpty && server.connectedPeers.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color(red: 1.0, green: 0.62, blue: 0.04))
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Kemungkinan Client/AP Isolation Aktif")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color(red: 1.0, green: 0.62, blue: 0.04))
+                                Text("Wi-Fi publik ini mungkin memblokir komunikasi langsung antar perangkat.")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(red: 1.0, green: 0.62, blue: 0.04).opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color(red: 1.0, green: 0.62, blue: 0.04).opacity(0.3), lineWidth: 1)
+                        )
+                    }
                 }
 
                 // Active File Transfer Progress Card

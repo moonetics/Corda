@@ -22,6 +22,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   );
 
   bool _isServiceRunning = false;
+  bool _isPossibleAPIsolation = false;
   final List<DiscoveredDeviceModel> _discoveredDevices = [];
   ClipboardEventModel? _lastClipboardEvent;
   TransferEventModel? _activeTransfer;
@@ -29,6 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   StreamSubscription<ClipboardEventModel>? _clipboardSub;
   StreamSubscription<DiscoveredDeviceModel>? _discoverySub;
   StreamSubscription<TransferEventModel>? _transferSub;
+  StreamSubscription<bool>? _isolationSub;
 
   @override
   void initState() {
@@ -43,6 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _clipboardSub?.cancel();
     _discoverySub?.cancel();
     _transferSub?.cancel();
+    _isolationSub?.cancel();
     super.dispose();
   }
 
@@ -95,6 +98,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted) {
         setState(() {
           _activeTransfer = event;
+        });
+      }
+    });
+
+    // Subscribe to AP isolation diagnostic events
+    _isolationSub = PlatformBridge.instance.apIsolationStream.listen((suspected) {
+      if (mounted) {
+        setState(() {
+          _isPossibleAPIsolation = suspected;
         });
       }
     });
@@ -486,6 +498,46 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ],
                         ),
                       ),
+                      if (_isPossibleAPIsolation) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: CordaTheme.amberWarning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: CordaTheme.amberWarning.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.wifi_password_rounded, color: CordaTheme.amberWarning, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Kemungkinan AP / Client Isolation Aktif',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: CordaTheme.amberWarning,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Wi-Fi terhubung namun tidak ada Mac yang terdeteksi dalam 10 detik. Jika berada di Wi-Fi publik atau kantor, AP Isolation mungkin memblokir komunikasi antar-perangkat. Coba gunakan Hotspot Pribadi.',
+                                      style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ] else ...[
                       ..._discoveredDevices.map((device) {
                         return Container(

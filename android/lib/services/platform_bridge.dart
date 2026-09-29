@@ -118,6 +118,8 @@ class PlatformBridge {
       EventChannel('com.corda.app/discovery_events');
   static const EventChannel _transferEventChannel =
       EventChannel('com.corda.app/transfer_events');
+  static const EventChannel _isolationEventChannel =
+      EventChannel('com.corda.app/isolation_events');
 
   static final PlatformBridge instance = PlatformBridge._internal();
   PlatformBridge._internal();
@@ -125,6 +127,7 @@ class PlatformBridge {
   Stream<ClipboardEventModel>? _clipboardStream;
   Stream<DiscoveredDeviceModel>? _discoveryStream;
   Stream<TransferEventModel>? _transferStream;
+  Stream<bool>? _apIsolationStream;
 
   Future<PermissionStatusModel> checkPermissions() async {
     try {
@@ -235,5 +238,13 @@ class PlatformBridge {
         .map((data) => TransferEventModel.fromMap(data as Map<dynamic, dynamic>))
         .handleError((_) => null);
     return _transferStream!;
+  }
+
+  Stream<bool> get apIsolationStream {
+    _apIsolationStream ??= _isolationEventChannel
+        .receiveBroadcastStream()
+        .map((data) => data as bool? ?? false)
+        .handleError((_) => false);
+    return _apIsolationStream!;
   }
 }
