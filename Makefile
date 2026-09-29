@@ -45,6 +45,7 @@ bundle-mac: build-mac
 	@mkdir -p build/Corda.app/Contents/Resources
 	@cp macos/.build/out/Products/Release/CordaMac build/Corda.app/Contents/MacOS/
 	@cp macos/CordaMac/Info.plist build/Corda.app/Contents/
+	@cp -R macos/.build/out/Products/Release/CordaMac_CordaMac.bundle build/Corda.app/Contents/Resources/ 2>/dev/null || true
 	@cp macos/CordaMac/Resources/* build/Corda.app/Contents/Resources/
 	@echo "  [OK] Corda.app created at build/Corda.app"
 
