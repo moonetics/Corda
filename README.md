@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="corda_with_text.png" alt="Corda Banner" width="420" />
+  <img src="assets/logo-corda.png" alt="Corda Logo" width="160" />
 </p>
+
+<h1 align="center">Corda</h1>
 
 <p align="center">
   <strong>The invisible cord between your Mac and Android.</strong><br/>
@@ -228,5 +230,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">
-  Crafted with care by <a href="https://github.com/moonetics">Moonetics</a>.
+  Crafted with care by <a href="https://github.com/moonetics">Bimo Yudistira Ariel</a>.
 </p>
