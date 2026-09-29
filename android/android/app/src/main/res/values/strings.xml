@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Corda</string>
+    <string name="accessibility_service_description">Layanan ini mendeteksi aktivitas salin (copy) teks di perangkat Android Anda secara instan untuk disinkronkan dengan Mac secara aman via jaringan Wi-Fi lokal. Tidak ada data pribadi atau pengetikan keyboard yang direkam.</string>
+</resources>

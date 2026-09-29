@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'services/platform_bridge.dart';
+import 'theme/corda_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const CordaApp());
 }
 
@@ -9,168 +14,93 @@ class CordaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const cordaAqua = Color(0xFF0A84FF);
-
     return MaterialApp(
       title: 'Corda',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: cordaAqua,
-          brightness: Brightness.light,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: cordaAqua,
-          brightness: Brightness.dark,
-        ),
-      ),
-      home: const CordaDashboardScreen(),
+      theme: CordaTheme.lightTheme(),
+      darkTheme: CordaTheme.darkTheme(),
+      home: const CordaAppBootstrap(),
     );
   }
 }
 
-class CordaDashboardScreen extends StatelessWidget {
-  const CordaDashboardScreen({super.key});
+class CordaAppBootstrap extends StatefulWidget {
+  const CordaAppBootstrap({super.key});
+
+  @override
+  State<CordaAppBootstrap> createState() => _CordaAppBootstrapState();
+}
+
+class _CordaAppBootstrapState extends State<CordaAppBootstrap> {
+  bool _isLoading = true;
+  bool _hasPermissions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    final status = await PlatformBridge.instance.checkPermissions();
+    if (mounted) {
+      setState(() {
+        _hasPermissions = status.accessibility;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0A84FF), Color(0xFF00D2D3)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.link_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Corda',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {},
-            tooltip: 'Pengaturan',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Hero Tagline Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primaryContainer.withValues(alpha: 0.7),
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'The invisible cord between your Mac and Android',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sinkronisasi clipboard dua arah & transfer file lokal P2P dengan kecepatan maksimal Wi-Fi.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Service Status Card
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
-              ),
-              child: Padding(
+    if (_isLoading) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF34C759), // Apple Mint Green
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Status Layanan: Siaga (Phase 0 Ready)',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'v1.0.0',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Boilerplate Flutter terpasang dengan izin Wi-Fi & Foreground Service. Engine background socket dan modul Aksesibilitas akan dihubungkan pada fase selanjutnya.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                decoration: BoxDecoration(
+                  gradient: CordaTheme.aquaGradient,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.link_rounded,
+                  color: Colors.white,
+                  size: 40,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              const Text(
+                'Corda',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'The invisible cord between your Mac and Android',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: CordaTheme.aquaPrimary,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (_hasPermissions) {
+      return const DashboardScreen();
+    } else {
+      return const OnboardingScreen();
+    }
   }
 }
