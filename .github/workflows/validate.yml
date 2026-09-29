@@ -1,0 +1,36 @@
+name: CI / Protocol Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-protocol:
+    name: Validate JSON Schemas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Schema Validator
+        run: |
+          python3 scripts/validate_schemas.py
+
+  build-macos-check:
+    name: Check macOS Package Build
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Swift Build
+        run: |
+          cd macos
+          swift build -c release
