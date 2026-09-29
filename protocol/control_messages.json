@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CordaControlMessages",
+  "description": "Formal JSON Schema for Corda Control Channel (Port 54321) framing and message payloads.",
+  "type": "object",
+  "required": ["type", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "PAIR_REQUEST",
+        "PAIR_RESPONSE",
+        "CLIPBOARD_PAYLOAD",
+        "HEARTBEAT_PING",
+        "HEARTBEAT_PONG",
+        "FILE_METADATA_HEADER",
+        "FILE_TRANSFER_ABORT"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/PairRequest" },
+    { "$ref": "#/definitions/PairResponse" },
+    { "$ref": "#/definitions/ClipboardPayload" },
+    { "$ref": "#/definitions/HeartbeatPing" },
+    { "$ref": "#/definitions/HeartbeatPong" },
+    { "$ref": "#/definitions/FileMetadataHeader" },
+    { "$ref": "#/definitions/FileTransferAbort" }
+  ],
+  "definitions": {
+    "PairRequest": {
+      "type": "object",
+      "required": ["type", "device_id", "device_name", "platform", "public_key", "fingerprint", "pin", "timestamp"],
+      "properties": {
+        "type": { "const": "PAIR_REQUEST" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "device_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "platform": { "type": "string", "enum": ["macos", "android"] },
+        "public_key": { "type": "string", "description": "Base64 encoded DER/PEM public key" },
+        "fingerprint": { 
+          "type": "string", 
+          "pattern": "^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$",
+          "description": "SHA-256 fingerprint formatted with colon separators"
+        },
+        "pin": { "type": "string", "pattern": "^[0-9]{6}$" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PairResponse": {
+      "type": "object",
+      "required": ["type", "device_id", "device_name", "platform", "public_key", "fingerprint", "status", "timestamp"],
+      "properties": {
+        "type": { "const": "PAIR_RESPONSE" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "device_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "platform": { "type": "string", "enum": ["macos", "android"] },
+        "public_key": { "type": "string", "description": "Base64 encoded DER/PEM public key" },
+        "fingerprint": { 
+          "type": "string", 
+          "pattern": "^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$" 
+        },
+        "status": { "type": "string", "enum": ["ACCEPTED", "REJECTED", "PIN_MISMATCH"] },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ClipboardPayload": {
+      "type": "object",
+      "required": ["type", "content", "content_type", "content_hash", "timestamp"],
+      "properties": {
+        "type": { "const": "CLIPBOARD_PAYLOAD" },
+        "content": { "type": "string", "description": "UTF-8 text content" },
+        "content_type": { "type": "string", "enum": ["text/plain", "text/uri-list"] },
+        "content_hash": { 
+          "type": "string", 
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "SHA-256 hex string used to prevent bidirectional echo loops"
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "HeartbeatPing": {
+      "type": "object",
+      "required": ["type", "seq", "timestamp"],
+      "properties": {
+        "type": { "const": "HEARTBEAT_PING" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "HeartbeatPong": {
+      "type": "object",
+      "required": ["type", "seq", "timestamp"],
+      "properties": {
+        "type": { "const": "HEARTBEAT_PONG" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FileMetadataHeader": {
+      "type": "object",
+      "required": ["type", "transfer_id", "total_files", "total_bytes", "files", "timestamp"],
+      "properties": {
+        "type": { "const": "FILE_METADATA_HEADER" },
+        "transfer_id": { "type": "string", "format": "uuid" },
+        "total_files": { "type": "integer", "minimum": 1 },
+        "total_bytes": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "relative_path", "size_bytes", "sha256"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "relative_path": { "type": "string" },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+            }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FileTransferAbort": {
+      "type": "object",
+      "required": ["type", "transfer_id", "reason", "timestamp"],
+      "properties": {
+        "type": { "const": "FILE_TRANSFER_ABORT" },
+        "transfer_id": { "type": "string", "format": "uuid" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
