@@ -226,9 +226,3 @@ Contributions, bug reports, and suggestions are welcome! Please check out [CONTR
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  Crafted with care by <a href="https://github.com/moonetics">Bimo Yudistira Ariel</a>.
-</p>

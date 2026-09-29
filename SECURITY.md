@@ -16,7 +16,7 @@ The Corda team takes the security of our users and their data seriously. Because
 If you believe you have discovered a vulnerability, please **do not** disclose it publicly via GitHub Issues.
 
 Instead, please send an encrypted or direct email to the project maintainers:
-* **Email**: `security@moonetics.dev` or `yudistira.bimo1312@gmail.com`
+* **Email**: `yudistira.bimo1312@gmail.com`
 * **Subject**: `[SECURITY VULNERABILITY] Corda - <Short Description>`
 
 Please include:
