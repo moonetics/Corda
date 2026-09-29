@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/platform_bridge.dart';
 import '../theme/corda_theme.dart';
-import 'dashboard_screen.dart';
+import 'main_navigation_shell.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -62,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   void _navigateToDashboard() {
     PlatformBridge.instance.startForegroundService();
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      MaterialPageRoute(builder: (_) => const MainNavigationShell()),
     );
   }
 

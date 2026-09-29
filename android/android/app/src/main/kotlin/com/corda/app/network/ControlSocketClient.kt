@@ -411,9 +411,26 @@ class ControlSocketClient(private val context: Context) {
      * Send outgoing clipboard text to the connected Mac.
      */
     fun sendClipboard(text: String, hash: String) {
-        if (!isConnected) return
-
         scope.launch {
+            if (!isConnected) {
+                val host = connectedHost ?: lastConnectedHost
+                val port = connectedPort ?: lastConnectedPort
+                if (host != null && port != null) {
+                    Log.i(TAG, "Socket belum terhubung saat sendClipboard. Mencoba autoConnect ke $host:$port...")
+                    autoConnect(host, port)
+                    var attempts = 0
+                    while (!isConnected && attempts < 15) {
+                        kotlinx.coroutines.delay(100L)
+                        attempts++
+                    }
+                }
+            }
+
+            if (!isConnected) {
+                Log.w(TAG, "Gagal mengirim CLIPBOARD_PAYLOAD: Tidak dapat menyambung ke Mac")
+                return@launch
+            }
+
             try {
                 val payload = JSONObject().apply {
                     put("type", "CLIPBOARD_PAYLOAD")

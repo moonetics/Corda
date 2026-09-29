@@ -4,6 +4,6 @@ import 'package:corda_app/main.dart';
 void main() {
   testWidgets('Corda app bootstrap test', (WidgetTester tester) async {
     await tester.pumpWidget(const CordaApp());
-    expect(find.text('Corda'), findsWidgets);
+    expect(find.text('CORDA'), findsWidgets);
   });
 }

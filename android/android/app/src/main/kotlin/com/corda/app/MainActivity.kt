@@ -25,6 +25,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : FlutterActivity() {
 
@@ -34,12 +35,14 @@ class MainActivity : FlutterActivity() {
         private const val DISCOVERY_EVENT_CHANNEL = "com.corda.app/discovery_events"
         private const val TRANSFER_EVENT_CHANNEL = "com.corda.app/transfer_events"
         private const val ISOLATION_EVENT_CHANNEL = "com.corda.app/isolation_events"
+        private const val FILE_PICKER_REQUEST_CODE = 9001
     }
 
     private var clipboardJob: Job? = null
     private var discoveryJob: Job? = null
     private var transferJob: Job? = null
     private var isolationJob: Job? = null
+    private var pendingFilePickerResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -118,6 +121,60 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } else {
                         result.error("NOT_CONNECTED", "Belum terhubung dengan Mac.", null)
+                    }
+                }
+                "getTrustedDevices" -> {
+                    val store = com.corda.app.security.TrustedDeviceStore(this)
+                    val service = CordaForegroundService.instance
+                    val isConnected = service?.socketClient?.isConnected ?: false
+                    val connectedHost = service?.socketClient?.connectedHost ?: ""
+                    val connectedPort = service?.socketClient?.connectedPort ?: 0
+
+                    val list = store.getTrustedDevices().map { dev ->
+                        mapOf(
+                            "id" to dev.id,
+                            "name" to dev.name,
+                            "platform" to dev.platform,
+                            "fingerprint" to dev.fingerprint,
+                            "pairedAt" to dev.pairedAt,
+                            "isConnected" to isConnected,
+                            "connectedHost" to connectedHost,
+                            "connectedPort" to connectedPort
+                        )
+                    }
+                    result.success(list)
+                }
+                "unpairDevice" -> {
+                    val deviceId = call.argument<String>("id") ?: ""
+                    val store = com.corda.app.security.TrustedDeviceStore(this)
+                    store.removeTrustedDevice(deviceId)
+                    val service = CordaForegroundService.instance
+                    service?.socketClient?.disconnect()
+                    result.success(true)
+                }
+                "getConnectionStatus" -> {
+                    val service = CordaForegroundService.instance
+                    val client = service?.socketClient
+                    result.success(
+                        mapOf(
+                            "isConnected" to (client?.isConnected ?: false),
+                            "connectedHost" to (client?.connectedHost ?: ""),
+                            "connectedPort" to (client?.connectedPort ?: 0)
+                        )
+                    )
+                }
+                "pickFiles" -> {
+                    pendingFilePickerResult = result
+                    try {
+                        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                        }
+                        startActivityForResult(Intent.createChooser(intent, "Pilih Berkas"), FILE_PICKER_REQUEST_CODE)
+                    } catch (e: Exception) {
+                        pendingFilePickerResult = null
+                        result.error("PICKER_ERROR", e.message, null)
                     }
                 }
                 else -> result.notImplemented()
@@ -314,6 +371,61 @@ class MainActivity : FlutterActivity() {
                 vibrator?.vibrate(20)
             }
         } catch (_: Exception) {}
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FILE_PICKER_REQUEST_CODE) {
+            val result = pendingFilePickerResult
+            pendingFilePickerResult = null
+            if (resultCode == RESULT_OK && data != null) {
+                val uris = mutableListOf<Uri>()
+                val clipData = data.clipData
+                if (clipData != null) {
+                    for (i in 0 until clipData.itemCount) {
+                        clipData.getItemAt(i)?.uri?.let { uris.add(it) }
+                    }
+                } else {
+                    data.data?.let { uris.add(it) }
+                }
+
+                val filePaths = mutableListOf<String>()
+                val cacheDir = File(cacheDir, "picked_transfers").apply { mkdirs() }
+                for (uri in uris) {
+                    val name = getFileNameFromUri(uri) ?: "file_${System.currentTimeMillis()}"
+                    val destFile = File(cacheDir, name)
+                    try {
+                        contentResolver.openInputStream(uri)?.use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        if (destFile.exists()) {
+                            filePaths.add(destFile.absolutePath)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("Corda", "Error copying picked file", e)
+                    }
+                }
+                result?.success(filePaths)
+            } else {
+                result?.success(emptyList<String>())
+            }
+        }
+    }
+
+    private fun getFileNameFromUri(uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) name = it.getString(index)
+                }
+            }
+        }
+        return name ?: uri.lastPathSegment
     }
 
     override fun onDestroy() {

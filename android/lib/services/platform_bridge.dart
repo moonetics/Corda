@@ -247,4 +247,85 @@ class PlatformBridge {
         .handleError((_) => false);
     return _apIsolationStream!;
   }
+
+  Future<List<TrustedDeviceModel>> getTrustedDevices() async {
+    try {
+      final res = await _channel.invokeMethod<List<dynamic>>('getTrustedDevices');
+      if (res != null) {
+        return res
+            .map((e) => TrustedDeviceModel.fromMap(e as Map<dynamic, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> unpairDevice(String id) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('unpairDevice', {'id': id});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> getConnectionStatus() async {
+    try {
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('getConnectionStatus');
+      if (res != null) {
+        return {
+          'isConnected': res['isConnected'] as bool? ?? false,
+          'connectedHost': res['connectedHost'] as String? ?? '',
+          'connectedPort': (res['connectedPort'] as num?)?.toInt() ?? 0,
+        };
+      }
+    } catch (_) {}
+    return {'isConnected': false, 'connectedHost': '', 'connectedPort': 0};
+  }
+
+  Future<List<String>> pickFiles() async {
+    try {
+      final res = await _channel.invokeMethod<List<dynamic>>('pickFiles');
+      if (res != null) {
+        return res.cast<String>();
+      }
+    } catch (_) {}
+    return [];
+  }
 }
+
+class TrustedDeviceModel {
+  final String id;
+  final String name;
+  final String platform;
+  final String fingerprint;
+  final String pairedAt;
+  final bool isConnected;
+  final String connectedHost;
+  final int connectedPort;
+
+  const TrustedDeviceModel({
+    required this.id,
+    required this.name,
+    required this.platform,
+    required this.fingerprint,
+    required this.pairedAt,
+    required this.isConnected,
+    required this.connectedHost,
+    required this.connectedPort,
+  });
+
+  factory TrustedDeviceModel.fromMap(Map<dynamic, dynamic> map) {
+    return TrustedDeviceModel(
+      id: map['id'] as String? ?? '',
+      name: map['name'] as String? ?? 'MacBook',
+      platform: map['platform'] as String? ?? 'macos',
+      fingerprint: map['fingerprint'] as String? ?? '',
+      pairedAt: map['pairedAt'] as String? ?? '',
+      isConnected: map['isConnected'] as bool? ?? false,
+      connectedHost: map['connectedHost'] as String? ?? '',
+      connectedPort: (map['connectedPort'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+

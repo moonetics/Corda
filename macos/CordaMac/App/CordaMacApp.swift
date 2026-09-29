@@ -47,11 +47,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MenuBarStatusIconView: View {
     @ObservedObject private var discovery = BonjourDiscoveryManager.shared
+    @ObservedObject private var server = ControlSessionServer.shared
 
     var body: some View {
-        let hasTrusted = discovery.discoveredDevices.contains(where: { $0.isTrusted })
-        let iconName = hasTrusted ? "link.badge.plus" : "link"
-        Image(systemName: iconName)
-            .renderingMode(.template)
+        let isConnected = server.connectedPeers.contains(where: { $0.isTrusted })
+
+        HStack(spacing: 3) {
+            if let img = loadMenuBarIcon() {
+                Image(nsImage: img)
+                    .renderingMode(.template)
+            } else {
+                Image(systemName: isConnected ? "link.badge.plus" : "link")
+                    .renderingMode(.template)
+            }
+
+            if isConnected {
+                Circle()
+                    .fill(Color(red: 0.0, green: 0.82, blue: 0.83))
+                    .frame(width: 4, height: 4)
+            }
+        }
+    }
+
+    private func loadMenuBarIcon() -> NSImage? {
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "menubar_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            img.size = NSSize(width: 18, height: 18)
+            img.isTemplate = true
+            return img
+        }
+        #endif
+        let paths = [
+            "macos/CordaMac/Resources/menubar_icon.png",
+            "assets/corda_logo_icon.png",
+            "../assets/corda_logo_icon.png"
+        ]
+        for path in paths {
+            if FileManager.default.fileExists(atPath: path),
+               let img = NSImage(contentsOfFile: path) {
+                img.size = NSSize(width: 18, height: 18)
+                img.isTemplate = true
+                return img
+            }
+        }
+        return nil
     }
 }

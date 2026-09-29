@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/main_navigation_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/platform_bridge.dart';
 import 'theme/corda_theme.dart';
@@ -17,8 +17,8 @@ class CordaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Corda',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
-      theme: CordaTheme.lightTheme(),
+      themeMode: ThemeMode.dark, // Enforce macOS Sonoma Obsidian Glass Dark Theme
+      theme: CordaTheme.darkTheme(),
       darkTheme: CordaTheme.darkTheme(),
       home: const CordaAppBootstrap(),
     );
@@ -56,39 +56,59 @@ class _CordaAppBootstrapState extends State<CordaAppBootstrap> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
+        backgroundColor: CordaTheme.obsidianBg,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                width: 72,
+                height: 72,
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  gradient: CordaTheme.aquaGradient,
-                  borderRadius: BorderRadius.circular(20),
+                  shape: BoxShape.circle,
+                  color: CordaTheme.obsidianGlass,
+                  border: Border.all(color: CordaTheme.obsidianGlassBorder),
+                  boxShadow: [
+                    BoxShadow(
+                      color: CordaTheme.aquaPrimary.withValues(alpha: 0.35),
+                      blurRadius: 28,
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.link_rounded,
-                  color: Colors.white,
-                  size: 40,
+                child: Image.asset(
+                  'assets/images/corda_logo_icon.png',
+                  fit: BoxFit.contain,
                 ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Corda',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'The invisible cord between your Mac and Android',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 24),
+              ShaderMask(
+                shaderCallback: (bounds) => CordaTheme.aquaGradient.createShader(bounds),
+                child: const Text(
+                  'CORDA',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 4,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Continuity Bridge for macOS & Android',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.5),
+                ),
+              ),
+              const SizedBox(height: 28),
               const SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: CordaTheme.aquaPrimary,
+                  color: CordaTheme.aquaCyan,
                 ),
               ),
             ],
@@ -98,7 +118,7 @@ class _CordaAppBootstrapState extends State<CordaAppBootstrap> {
     }
 
     if (_hasPermissions) {
-      return const DashboardScreen();
+      return const MainNavigationShell();
     } else {
       return const OnboardingScreen();
     }

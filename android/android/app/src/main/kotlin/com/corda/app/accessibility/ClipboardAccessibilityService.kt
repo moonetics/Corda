@@ -5,15 +5,23 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.corda.app.events.ClipboardCopiedEvent
 import com.corda.app.events.CordaEventBus
-
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import java.util.Collections
 
-class ClipboardAccessibilityService : AccessibilityService() {
+class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.OnPrimaryClipChangedListener {
 
     companion object {
         private const val TAG = "CordaClipboardAcc"
@@ -42,24 +50,43 @@ class ClipboardAccessibilityService : AccessibilityService() {
     }
 
     private var clipboardManager: ClipboardManager? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        Log.i(TAG, "Corda ClipboardAccessibilityService connected successfully (Event-Driven Mode).")
+        clipboardManager?.addPrimaryClipChangedListener(this)
+        Log.i(TAG, "Corda ClipboardAccessibilityService connected with OnPrimaryClipChangedListener active.")
+    }
+
+    override fun onPrimaryClipChanged() {
+        Log.d(TAG, "onPrimaryClipChanged terdeteksi oleh sistem.")
+        checkAndProcessClipboard("system_clipboard_listener")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         val eventType = event.eventType
+        val pkg = event.packageName?.toString() ?: ""
+
         // Listen for interactions likely indicating user copy / selection actions
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
             eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
+            eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY
         ) {
-            checkAndProcessClipboard(event.packageName?.toString() ?: "")
+            checkAndProcessClipboard(pkg)
+            
+            // Asynchronous delayed checks: third-party apps (Chrome, WhatsApp, Notes)
+            // write to the clipboard asynchronously after the click/selection event.
+            serviceScope.launch {
+                delay(120L)
+                checkAndProcessClipboard(pkg)
+                delay(200L)
+                checkAndProcessClipboard(pkg)
+            }
         }
     }
 
@@ -114,6 +141,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
             lastProcessedTime = currentTime
 
             Log.i(TAG, "Aksi salin terdeteksi! Teks (${textItem.length} chars) dari paket: $sourcePackage")
+            triggerHapticFeedback()
             
             // Post event to CordaEventBus for CordaForegroundService and Flutter Layer
             val event = ClipboardCopiedEvent(
@@ -129,12 +157,33 @@ class ClipboardAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun triggerHapticFeedback() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vm?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(15)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
     override fun onInterrupt() {
         Log.w(TAG, "Corda ClipboardAccessibilityService interrupted.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        clipboardManager?.removePrimaryClipChangedListener(this)
+        serviceScope.cancel()
         Log.i(TAG, "Corda ClipboardAccessibilityService destroyed.")
     }
 }
+

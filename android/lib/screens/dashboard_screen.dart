@@ -1,20 +1,22 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/platform_bridge.dart';
 import '../theme/corda_theme.dart';
 import 'onboarding_screen.dart';
 import 'qr_scanner_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final VoidCallback? onNavigateToTransfer;
+
+  const DashboardScreen({super.key, this.onNavigateToTransfer});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with WidgetsBindingObserver {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   PermissionStatusModel _permissions = const PermissionStatusModel(
     accessibility: false,
     batteryIgnored: false,
@@ -24,27 +26,29 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _isServiceRunning = false;
   bool _isPossibleAPIsolation = false;
   final List<DiscoveredDeviceModel> _discoveredDevices = [];
+  List<TrustedDeviceModel> _trustedDevices = [];
+  Map<String, dynamic> _connectionStatus = {'isConnected': false, 'connectedHost': '', 'connectedPort': 0};
   ClipboardEventModel? _lastClipboardEvent;
-  TransferEventModel? _activeTransfer;
 
   StreamSubscription<ClipboardEventModel>? _clipboardSub;
   StreamSubscription<DiscoveredDeviceModel>? _discoverySub;
-  StreamSubscription<TransferEventModel>? _transferSub;
   StreamSubscription<bool>? _isolationSub;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initDashboard();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollStatus());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
     _clipboardSub?.cancel();
     _discoverySub?.cancel();
-    _transferSub?.cancel();
     _isolationSub?.cancel();
     super.dispose();
   }
@@ -52,40 +56,32 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkHealth();
+      _pollStatus();
     }
   }
 
   Future<void> _initDashboard() async {
-    await _checkHealth();
-    final running = await PlatformBridge.instance.isServiceRunning();
-    if (mounted) {
-      setState(() => _isServiceRunning = running);
-    }
+    await _pollStatus();
 
-    if (!running && _permissions.accessibility) {
+    // Auto-start foreground service if accessibility is granted
+    if (!_isServiceRunning && _permissions.accessibility) {
       await PlatformBridge.instance.startForegroundService();
-      if (mounted) {
-        setState(() => _isServiceRunning = true);
-      }
+      final running = await PlatformBridge.instance.isServiceRunning();
+      if (mounted) setState(() => _isServiceRunning = running);
     }
 
-    // Subscribe to clipboard events
     _clipboardSub = PlatformBridge.instance.clipboardStream.listen((event) {
       if (mounted) {
-        setState(() {
-          _lastClipboardEvent = event;
-        });
+        setState(() => _lastClipboardEvent = event);
       }
     });
 
-    // Subscribe to mDNS discovery events
     _discoverySub = PlatformBridge.instance.discoveryStream.listen((device) {
       if (mounted) {
         setState(() {
-          final index = _discoveredDevices.indexWhere((d) => d.id == device.id || d.host == device.host);
-          if (index >= 0) {
-            _discoveredDevices[index] = device;
+          final idx = _discoveredDevices.indexWhere((d) => d.id == device.id || d.host == device.host);
+          if (idx >= 0) {
+            _discoveredDevices[idx] = device;
           } else {
             _discoveredDevices.add(device);
           }
@@ -93,41 +89,63 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     });
 
-    // Subscribe to binary file transfer events
-    _transferSub = PlatformBridge.instance.transferStream.listen((event) {
-      if (mounted) {
-        setState(() {
-          _activeTransfer = event;
-        });
-      }
-    });
-
-    // Subscribe to AP isolation diagnostic events
     _isolationSub = PlatformBridge.instance.apIsolationStream.listen((suspected) {
       if (mounted) {
-        setState(() {
-          _isPossibleAPIsolation = suspected;
-        });
+        setState(() => _isPossibleAPIsolation = suspected);
       }
     });
   }
 
-  Future<void> _checkHealth() async {
-    final status = await PlatformBridge.instance.checkPermissions();
+  Future<void> _pollStatus() async {
+    final perms = await PlatformBridge.instance.checkPermissions();
+    final running = await PlatformBridge.instance.isServiceRunning();
+    final trusted = await PlatformBridge.instance.getTrustedDevices();
+    final conn = await PlatformBridge.instance.getConnectionStatus();
+
     if (mounted) {
-      setState(() => _permissions = status);
+      setState(() {
+        _permissions = perms;
+        _isServiceRunning = running;
+        _trustedDevices = trusted;
+        _connectionStatus = conn;
+      });
     }
   }
 
-  Future<void> _toggleService(bool value) async {
-    if (value) {
-      await PlatformBridge.instance.startForegroundService();
-    } else {
-      await PlatformBridge.instance.stopForegroundService();
-    }
-    final running = await PlatformBridge.instance.isServiceRunning();
-    if (mounted) {
-      setState(() => _isServiceRunning = running);
+  Future<void> _unpairDevice(TrustedDeviceModel device) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Putuskan Perangkat?'),
+        content: Text(
+          'Anda yakin ingin memutuskan sambungan dengan "${device.name}"? Kunci E2EE akan dihapus.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Putuskan'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await PlatformBridge.instance.unpairDevice(device.id);
+      await _pollStatus();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: CordaTheme.obsidianGlass,
+            content: Text('Perangkat ${device.name} telah diputuskan.'),
+          ),
+        );
+      }
     }
   }
 
@@ -138,15 +156,30 @@ class _DashboardScreenState extends State<DashboardScreen>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: CordaTheme.obsidianGlass,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: CordaTheme.obsidianGlassBorder),
+          ),
           title: Row(
             children: [
-              const Icon(Icons.laptop_mac_rounded, color: CordaTheme.aquaPrimary),
-              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: CordaTheme.aquaGradient,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(CupertinoIcons.macwindow, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Pasangkan dengan ${device.name}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
@@ -157,27 +190,39 @@ class _DashboardScreenState extends State<DashboardScreen>
             children: [
               Text(
                 'Alamat IP: ${device.host}:${device.port}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: Colors.white54, fontFamily: 'monospace'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               const Text(
                 'Masukkan 6-digit PIN yang tampil di jendela Menu Bar Mac Anda:',
-                style: TextStyle(fontSize: 13),
+                style: TextStyle(fontSize: 13, color: Colors.white70),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               TextField(
                 controller: pinController,
                 autofocus: true,
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 6),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 8,
+                  color: CordaTheme.aquaCyan,
+                ),
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: '000000',
-                  hintStyle: TextStyle(letterSpacing: 6, color: Colors.grey.withValues(alpha: 0.5)),
+                  hintStyle: TextStyle(
+                    letterSpacing: 8,
+                    color: Colors.white.withValues(alpha: 0.2),
+                  ),
                   filled: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  fillColor: Colors.black.withValues(alpha: 0.3),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: CordaTheme.obsidianGlassBorder),
+                  ),
                 ),
               ),
             ],
@@ -190,21 +235,26 @@ class _DashboardScreenState extends State<DashboardScreen>
                   MaterialPageRoute(builder: (_) => const QRScannerScreen()),
                 );
               },
-              child: const Text('Buka QR Scanner'),
+              child: const Text('Buka Kamera QR', style: TextStyle(color: CordaTheme.aquaCyan)),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CordaTheme.aquaPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               onPressed: () async {
                 final pin = pinController.text.trim();
                 if (pin.length == 6) {
                   Navigator.of(ctx).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
+                      backgroundColor: CordaTheme.obsidianGlass,
                       content: Row(
                         children: [
                           const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: CordaTheme.aquaCyan),
                           ),
                           const SizedBox(width: 12),
                           Text('Menghubungkan ke ${device.name}...'),
@@ -230,11 +280,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                           content: Text('Berhasil dipasangkan dengan ${device.name}!'),
                         ),
                       );
-                      _checkHealth();
+                      _pollStatus();
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          backgroundColor: Colors.redAccent,
+                          backgroundColor: CordaTheme.roseDanger,
                           content: Text(result['message']?.toString() ?? 'Pairing gagal'),
                         ),
                       );
@@ -242,7 +292,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   }
                 }
               },
-              child: const Text('Pasangkan'),
+              child: const Text('Pasangkan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -252,603 +302,583 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final isConnected = _connectionStatus['isConnected'] == true;
+    final primaryTrustedDevice = _trustedDevices.isNotEmpty ? _trustedDevices.first : null;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/images/corda_logo_icon.png',
-                width: 28,
-                height: 28,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    gradient: CordaTheme.aquaGradient,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.link_rounded, color: Colors.white, size: 16),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Corda',
-              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: -0.5),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline_rounded),
-            tooltip: 'Panduan Onboarding',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh Status',
-            onPressed: _checkHealth,
-          ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Slogan Hero Banner Card with Logo & Text
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                ),
-                gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primaryContainer.withValues(alpha: 0.4),
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Image.asset(
-                      'assets/images/corda_logo_text.png',
-                      width: double.infinity,
-                      height: 120,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: _pollStatus,
+          color: CordaTheme.aquaCyan,
+          backgroundColor: CordaTheme.obsidianGlass,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+            children: [
+              // Top Bar Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: CordaTheme.obsidianGlass,
+                          border: Border.all(color: CordaTheme.obsidianGlassBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: CordaTheme.aquaPrimary.withValues(alpha: 0.25),
+                              blurRadius: 16,
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/images/corda_logo_icon.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.auto_awesome_rounded, color: CordaTheme.aquaPrimary, size: 18),
+                          ShaderMask(
+                            shaderCallback: (bounds) => CordaTheme.aquaGradient.createShader(bounds),
+                            child: const Text(
+                              'CORDA',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'Continuity Bridge • macOS Sonoma',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.question_circle, color: Colors.white70, size: 22),
+                        tooltip: 'Panduan',
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.arrow_clockwise, color: Colors.white70, size: 20),
+                        tooltip: 'Refresh',
+                        onPressed: _pollStatus,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // Accessibility Warning Banner (if disabled)
+              if (!_permissions.accessibility) ...[
+                LiquidGlassCard(
+                  borderColor: CordaTheme.amberWarning.withValues(alpha: 0.6),
+                  fillColor: CordaTheme.amberWarning.withValues(alpha: 0.08),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: CordaTheme.amberWarning.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.exclamationmark_triangle_fill,
+                              color: CordaTheme.amberWarning,
+                              size: 18,
+                            ),
+                          ),
                           const SizedBox(width: 10),
-                          Expanded(
+                          const Expanded(
                             child: Text(
-                              'The invisible cord between your Mac and Android. Sinkronisasi clipboard instan (< 200 ms) & transfer file Wi-Fi lokal.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                                height: 1.3,
+                              'Aksesibilitas Diperlukan',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: CordaTheme.amberWarning,
+                                fontSize: 14,
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Health Warning Banner (if accessibility disabled)
-            if (!_permissions.accessibility) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: CordaTheme.amberWarning.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: CordaTheme.amberWarning.withValues(alpha: 0.5),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: CordaTheme.amberWarning, size: 22),
-                        SizedBox(width: 10),
-                        Text(
-                          'Aksesibilitas Belum Aktif',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: CordaTheme.amberWarning,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Layanan Aksesibilitas diperlukan agar Corda dapat mendeteksi saat Anda menyalin teks di Android.',
-                      style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: CordaTheme.amberWarning,
-                        foregroundColor: Colors.black,
-                        minimumSize: const Size.fromHeight(40),
-                      ),
-                      onPressed: () {
-                        PlatformBridge.instance.openAccessibilitySettings();
-                      },
-                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                      label: const Text('Aktifkan Aksesibilitas Sekarang'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Background Service Status Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _isServiceRunning ? CordaTheme.mintGreen : Colors.grey,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          _isServiceRunning
-                              ? 'Layanan Latar Belakang: Siaga'
-                              : 'Layanan Latar Belakang: Dinonaktifkan',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        Switch.adaptive(
-                          value: _isServiceRunning,
-                          activeTrackColor: CordaTheme.mintGreen,
-                          onChanged: _toggleService,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _isServiceRunning
-                          ? 'Notifikasi hening (IMPORTANCE_MIN) aktif. Siaga mendengarkan copy event dan siaran mDNS.'
-                          : 'Nyalakan saklar di atas untuk mengaktifkan sinkronisasi otomatis di latar belakang.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Discovered Mac Devices Card (NsdManager mDNS)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.wifi_tethering_rounded, size: 20, color: CordaTheme.aquaPrimary),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Perangkat Mac di Jaringan Lokal',
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: CordaTheme.aquaPrimary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            'mDNS _corda._tcp',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: CordaTheme.aquaPrimary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_discoveredDevices.isEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: CordaTheme.aquaPrimary),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Text(
-                                'Mencari siaran Mac via mDNS... Pastikan Mac dan Android di Wi-Fi yang sama.',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Layanan Aksesibilitas diperlukan agar Corda dapat mendeteksi saat Anda menyalin teks di Android secara instan di background.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          height: 1.3,
                         ),
                       ),
-                      if (_isPossibleAPIsolation) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: CordaTheme.amberWarning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: CordaTheme.amberWarning.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.wifi_password_rounded, color: CordaTheme.amberWarning, size: 20),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Kemungkinan AP / Client Isolation Aktif',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: CordaTheme.amberWarning,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Wi-Fi terhubung namun tidak ada Mac yang terdeteksi dalam 10 detik. Jika berada di Wi-Fi publik atau kantor, AP Isolation mungkin memblokir komunikasi antar-perangkat. Coba gunakan Hotspot Pribadi.',
-                                      style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CordaTheme.amberWarning,
+                          foregroundColor: Colors.black,
+                          minimumSize: const Size.fromHeight(38),
                         ),
-                      ],
-                    ] else ...[
-                      ..._discoveredDevices.map((device) {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: CordaTheme.aquaPrimary.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: CordaTheme.aquaPrimary.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.laptop_mac_rounded, color: CordaTheme.aquaPrimary, size: 22),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      device.name,
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                    ),
-                                    Text(
-                                      '${device.host}:${device.port}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colorScheme.onSurfaceVariant,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                                onPressed: () {
-                                  _showPairWithDiscoveredDeviceDialog(device);
-                                },
-                                child: const Text('Pair'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                        onPressed: () {
+                          PlatformBridge.instance.openAccessibilitySettings();
+                        },
+                        icon: const Icon(CupertinoIcons.arrow_up_right_square, size: 16),
+                        label: const Text(
+                          'Aktifkan Aksesibilitas Sekarang',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
                     ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Active Binary File Transfer Progress Card
-            if (_activeTransfer != null) ...[
-              _buildActiveTransferCard(theme, colorScheme),
-              const SizedBox(height: 16),
-            ],
-
-            // Quick Actions Card
-            Row(
-              children: [
-                Expanded(
-                  child: Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const QRScannerScreen()),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                gradient: CordaTheme.aquaGradient,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Pindai QR Mac',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Pasangkan dengan Mac',
-                              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () {
-                        _showSendFileDialog(context, theme, colorScheme);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: CordaTheme.mintGreen,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Kirim File ke Mac',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'P2P Wi-Fi Langsung',
-                              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 16),
               ],
-            ),
-            const SizedBox(height: 16),
 
-            // Live Clipboard Activity Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.content_copy_rounded, size: 20, color: CordaTheme.aquaCyan),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Aktivitas Salin Clipboard Terakhir',
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const Spacer(),
-                        if (_lastClipboardEvent != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: CordaTheme.mintGreen.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Lolos Filter',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: CordaTheme.mintGreen,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_lastClipboardEvent == null) ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Belum ada teks yang disalin. Coba salin teks di browser atau aplikasi lain untuk melihat event tertangkap secara live.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _lastClipboardEvent!.text,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '${_lastClipboardEvent!.text.length} karakter',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                Text(
-                                  DateTime.fromMillisecondsSinceEpoch(_lastClipboardEvent!.timestamp)
-                                      .toLocal()
-                                      .toString()
-                                      .split('.')
-                                      .first,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
+              // HERO CARD: Apple Continuity Device Card (Prominent Paired Mac Status)
+              _buildAppleContinuityDeviceCard(primaryTrustedDevice, isConnected),
+
+              const SizedBox(height: 24),
+
+              // Discovered Macs on Wi-Fi Network
+              _buildSectionTitle('PERANGKAT MAC DI WI-FI LOKAL'),
+              const SizedBox(height: 10),
+              _buildDiscoveredDevicesSection(),
+
+              const SizedBox(height: 24),
+
+              // Live Clipboard Activity Card
+              _buildSectionTitle('AKTIVITAS CLIPBOARD TERAKHIR'),
+              const SizedBox(height: 10),
+              _buildClipboardActivityCard(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildActiveTransferCard(ThemeData theme, ColorScheme colorScheme) {
-    final transfer = _activeTransfer!;
-    final isIncoming = transfer.direction == 'incoming';
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: CordaTheme.aquaPrimary.withValues(alpha: 0.4),
-          width: 1.5,
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+          color: Colors.white.withValues(alpha: 0.4),
         ),
       ),
+    );
+  }
+
+  /// Apple Continuity Device Card
+  /// Prominently displays pairing status, connected Mac details, TLS status, and actions.
+  Widget _buildAppleContinuityDeviceCard(TrustedDeviceModel? device, bool isConnected) {
+    if (device == null) {
+      // Unpaired state: Hero card inviting user to pair
+      return LiquidGlassCard(
+        glow: true,
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: CordaTheme.aquaGradient,
+                boxShadow: [
+                  BoxShadow(
+                    color: CordaTheme.aquaCyan.withValues(alpha: 0.35),
+                    blurRadius: 24,
+                  ),
+                ],
+              ),
+              child: const Icon(CupertinoIcons.macwindow, color: Colors.white, size: 30),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Belum Terhubung ke Mac',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pasangkan Android dengan Mac Anda untuk sinkronisasi clipboard dua arah & pengiriman file instan.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.6),
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CordaTheme.aquaPrimary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const QRScannerScreen()),
+                      );
+                    },
+                    icon: const Icon(CupertinoIcons.qrcode_viewfinder, size: 18),
+                    label: const Text(
+                      'Pindai QR Mac',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // PAIRED STATE: Apple Continuity Device Card
+    final host = _connectionStatus['connectedHost'] as String? ?? device.connectedHost;
+    final port = _connectionStatus['connectedPort'] as int? ?? device.connectedPort;
+    final displayHost = host.isNotEmpty ? host : 'Wi-Fi Lokal';
+
+    return LiquidGlassCard(
+      glow: true,
+      borderColor: isConnected
+          ? CordaTheme.aquaCyan.withValues(alpha: 0.5)
+          : CordaTheme.obsidianGlassBorder,
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header: Icon + Device Name + Live Badge
           Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    colors: isConnected
+                        ? [const Color(0xFF0A84FF), const Color(0xFF00D2D3)]
+                        : [const Color(0xFF2C3E50), const Color(0xFF34495E)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    if (isConnected)
+                      BoxShadow(
+                        color: CordaTheme.aquaCyan.withValues(alpha: 0.4),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                  ],
+                ),
+                child: const Icon(
+                  CupertinoIcons.macwindow,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isConnected ? CordaTheme.mintGreen : Colors.white38,
+                            boxShadow: [
+                              if (isConnected)
+                                BoxShadow(
+                                  color: CordaTheme.mintGreen.withValues(alpha: 0.6),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isConnected ? 'Terhubung & Aktif ⚡' : 'Tersimpan (Siaga)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isConnected ? CordaTheme.mintGreen : Colors.white54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: const Text(
+                  'macOS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 16),
+
+          // Specs Grid
+          Row(
+            children: [
+              Expanded(
+                child: _buildDeviceSpecItem(
+                  icon: CupertinoIcons.wifi,
+                  label: 'ALAMAT IP',
+                  value: port > 0 ? '$displayHost:$port' : displayHost,
+                ),
+              ),
+              Expanded(
+                child: _buildDeviceSpecItem(
+                  icon: CupertinoIcons.lock_shield_fill,
+                  label: 'KEAMANAN',
+                  value: 'TLS 1.3 E2EE',
+                  highlight: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDeviceSpecItem(
+                  icon: CupertinoIcons.barcode,
+                  label: 'FINGERPRINT',
+                  value: device.fingerprint.length > 12
+                      ? '${device.fingerprint.substring(0, 8)}...${device.fingerprint.substring(device.fingerprint.length - 4)}'
+                      : (device.fingerprint.isEmpty ? 'Tervalidasi' : device.fingerprint),
+                ),
+              ),
+              Expanded(
+                child: _buildDeviceSpecItem(
+                  icon: CupertinoIcons.calendar,
+                  label: 'DIPASANGKAN',
+                  value: device.pairedAt.split('T').first.isNotEmpty
+                      ? device.pairedAt.split('T').first
+                      : 'Aktif',
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 14),
+
+          // Action row
+          Row(
+            children: [
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: CordaTheme.roseDanger,
+                  side: BorderSide(color: CordaTheme.roseDanger.withValues(alpha: 0.4)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                onPressed: () => _unpairDevice(device),
+                icon: const Icon(CupertinoIcons.xmark_circle, size: 16),
+                label: const Text('Putuskan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+              const Spacer(),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CordaTheme.aquaPrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onPressed: () {
+                  if (widget.onNavigateToTransfer != null) {
+                    widget.onNavigateToTransfer!();
+                  }
+                },
+                icon: const Icon(CupertinoIcons.paperplane_fill, size: 14),
+                label: const Text('Kirim Berkas', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceSpecItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool highlight = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 12, color: Colors.white38),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: Colors.white.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            fontFamily: label == 'ALAMAT IP' || label == 'FINGERPRINT' ? 'monospace' : null,
+            color: highlight ? CordaTheme.aquaCyan : Colors.white.withValues(alpha: 0.9),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Discovered Macs Section
+  Widget _buildDiscoveredDevicesSection() {
+    if (_discoveredDevices.isEmpty) {
+      return LiquidGlassCard(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: CordaTheme.aquaCyan),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    'Mencari siaran Mac via mDNS (_corda._tcp)... Pastikan Mac membuka Corda di Wi-Fi yang sama.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_isPossibleAPIsolation) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: CordaTheme.amberWarning.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CordaTheme.amberWarning.withValues(alpha: 0.4)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(CupertinoIcons.wifi_exclamationmark, color: CordaTheme.amberWarning, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Kemungkinan AP Isolation aktif di Wi-Fi ini. Komunikasi lokal diblokir oleh router. Gunakan Hotspot Pribadi.',
+                        style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: _discoveredDevices.map((dev) {
+        return LiquidGlassCard(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: isIncoming ? CordaTheme.aquaGradient : null,
-                  color: isIncoming ? null : CordaTheme.mintGreen,
+                  color: CordaTheme.aquaPrimary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  isIncoming ? Icons.downloading_rounded : Icons.upload_file_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                child: const Icon(CupertinoIcons.macwindow, color: CordaTheme.aquaCyan, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -856,188 +886,167 @@ class _DashboardScreenState extends State<DashboardScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      transfer.fileName,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      dev.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      transfer.isCompleted
-                          ? 'Transfer Selesai ✨ Tersimpan di Downloads/Corda'
-                          : 'Berkas ${transfer.fileIndex + 1} dari ${transfer.totalFiles} • ${transfer.speedMBs.toStringAsFixed(1)} MB/s',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: transfer.isCompleted ? CordaTheme.mintGreen : colorScheme.onSurfaceVariant,
-                        fontWeight: transfer.isCompleted ? FontWeight.w600 : FontWeight.normal,
-                      ),
+                      '${dev.host}:${dev.port}',
+                      style: const TextStyle(fontSize: 12, color: Colors.white54, fontFamily: 'monospace'),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              if (transfer.isCompleted)
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  tooltip: 'Tutup',
-                  onPressed: () {
-                    setState(() => _activeTransfer = null);
-                  },
-                )
-              else
-                Text(
-                  '${transfer.progressPercent}%',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: CordaTheme.aquaPrimary,
-                  ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CordaTheme.aquaPrimary,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
+                onPressed: () => _showPairWithDiscoveredDeviceDialog(dev),
+                child: const Text('Pasangkan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: transfer.isCompleted ? 1.0 : (transfer.progressPercent / 100.0).clamp(0.0, 1.0),
-              backgroundColor: colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                transfer.isCompleted ? CordaTheme.mintGreen : CordaTheme.aquaPrimary,
-              ),
-              minHeight: 6,
-            ),
-          ),
-        ],
-      ),
+        );
+      }).toList(),
     );
   }
 
-  void _showSendFileDialog(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
-    final pathController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          top: 24,
-          left: 20,
-          right: 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  /// Real-Time Clipboard Activity Card
+  Widget _buildClipboardActivityCard() {
+    final event = _lastClipboardEvent;
+    if (event == null) {
+      return LiquidGlassCard(
+        padding: const EdgeInsets.all(18),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: CordaTheme.mintGreen.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.upload_file_rounded, color: CordaTheme.mintGreen, size: 22),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Kirim Berkas ke Mac',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Streaming langsung 256 KB chunk melalui Port 54322 dengan verifikasi SHA-256.',
-              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: pathController,
-              decoration: InputDecoration(
-                labelText: 'Jalur File Lengkap di Perangkat',
-                hintText: '/sdcard/Download/dokumen.pdf',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                prefixIcon: const Icon(Icons.folder_open_rounded),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
               ),
+              child: const Icon(CupertinoIcons.doc_on_clipboard, color: Colors.white38, size: 18),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      Navigator.pop(ctx);
-                      final tempDir = Directory.systemTemp.path;
-                      final sampleFile = File('$tempDir/Corda_Catatan_Demo.txt');
-                      await sampleFile.writeAsString(
-                        'Halo dari Corda Android!\n\n'
-                        'Dokumen ini dikirimkan melalui Jalur Streaming Biner Port 54322.\n'
-                        'Kapasitas buffer 256 KB per frame dengan validasi integritas per-chunk SHA-256.\n'
-                        'Waktu pengiriman: ${DateTime.now().toIso8601String()}',
-                      );
-
-                      final ok = await PlatformBridge.instance.sendFile(sampleFile.path);
-                      if (!mounted) return;
-                      messenger.showSnackBar(
-                        SnackBar(
-                          backgroundColor: ok ? CordaTheme.mintGreen : Colors.redAccent,
-                          content: Text(
-                            ok
-                                ? 'Mengirim Corda_Catatan_Demo.txt ke Mac...'
-                                : 'Gagal mengirim file. Pastikan Mac terhubung via pairing.',
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.note_alt_outlined, size: 16),
-                    label: const Text('Kirim Demo File', style: TextStyle(fontSize: 12)),
-                  ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Belum ada teks disalin. Salin teks di aplikasi apa pun (WhatsApp, Chrome, Catatan) untuk sinkron otomatis ke Mac.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withValues(alpha: 0.45),
+                  height: 1.3,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: CordaTheme.aquaPrimary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    onPressed: () async {
-                      final path = pathController.text.trim();
-                      if (path.isEmpty) return;
-
-                      final messenger = ScaffoldMessenger.of(context);
-                      Navigator.pop(ctx);
-                      final ok = await PlatformBridge.instance.sendFile(path);
-                      if (!mounted) return;
-                      messenger.showSnackBar(
-                        SnackBar(
-                          backgroundColor: ok ? CordaTheme.mintGreen : Colors.redAccent,
-                          content: Text(
-                            ok
-                                ? 'Mengirim berkas ke Mac...'
-                                : 'Gagal mengirim berkas. Periksa jalur file dan koneksi Mac.',
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.send_rounded, size: 16),
-                    label: const Text('Kirim Berkas', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
+      );
+    }
+
+    final dateStr = DateTime.fromMillisecondsSinceEpoch(event.timestamp)
+        .toLocal()
+        .toString()
+        .split('.')
+        .first;
+
+    return LiquidGlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(CupertinoIcons.doc_on_clipboard_fill, size: 16, color: CordaTheme.aquaCyan),
+                  const SizedBox(width: 8),
+                  Text(
+                    event.sourcePackage.isNotEmpty ? event.sourcePackage : 'Tersinkron',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: CordaTheme.mintGreen.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Tersinkron ke Mac ✨',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: CordaTheme.mintGreen,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Text(
+              event.text,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontFamily: 'monospace',
+                color: Colors.white,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${event.text.length} karakter • $dateStr',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.4),
+                ),
+              ),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: event.text));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Teks disalin kembali ke clipboard Android'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                child: const Row(
+                  children: [
+                    Icon(CupertinoIcons.doc_on_doc, size: 14, color: CordaTheme.aquaCyan),
+                    SizedBox(width: 4),
+                    Text(
+                      'Salin Ulang',
+                      style: TextStyle(fontSize: 11, color: CordaTheme.aquaCyan, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -80,10 +80,30 @@ public final class FileStreamingManager: ObservableObject {
     private init() {}
 
     public var defaultDownloadsFolder: URL {
+        if let customPath = UserDefaults.standard.string(forKey: "custom_download_path"),
+           !customPath.isEmpty {
+            let customURL = URL(fileURLWithPath: customPath, isDirectory: true)
+            try? FileManager.default.createDirectory(at: customURL, withIntermediateDirectories: true)
+            return customURL
+        }
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
         let cordaFolder = downloads.appendingPathComponent("Corda", isDirectory: true)
         try? FileManager.default.createDirectory(at: cordaFolder, withIntermediateDirectories: true)
         return cordaFolder
+    }
+
+    public func setCustomDownloadsFolder(_ url: URL) {
+        UserDefaults.standard.set(url.path, forKey: "custom_download_path")
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
+    }
+
+    public func resetDownloadsFolder() {
+        UserDefaults.standard.removeObject(forKey: "custom_download_path")
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
     }
 
     // MARK: - Server Listener (Port 54322)
