@@ -80,6 +80,12 @@
           "pattern": "^[0-9a-fA-F]{64}$",
           "description": "SHA-256 hex string used to prevent bidirectional echo loops"
         },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$",
+          "description": "Optional sender public key SHA-256 fingerprint for in-band authentication"
+        },
+        "device_id": { "type": "string", "format": "uuid" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
     },
@@ -89,6 +95,13 @@
       "properties": {
         "type": { "const": "HEARTBEAT_PING" },
         "seq": { "type": "integer", "minimum": 0 },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$",
+          "description": "Optional sender public key SHA-256 fingerprint for in-band authentication"
+        },
+        "device_id": { "type": "string", "format": "uuid" },
+        "device_name": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
     },

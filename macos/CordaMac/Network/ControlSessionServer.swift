@@ -98,13 +98,15 @@ public final class ControlSessionServer: ObservableObject {
     /// Handle an incoming client connection routed from NWListener.
     public func handleNewConnection(_ connection: NWConnection) {
         let peerId = UUID().uuidString
+        let trustedList = KeychainManager.shared.getTrustedDevices()
+        let defaultTrusted = trustedList.sorted(by: { $0.pairedAt > $1.pairedAt }).first
         let tempPeer = ConnectedPeer(
             id: peerId,
-            name: "Android Device",
+            name: defaultTrusted?.name ?? "Android Device",
             platform: "android",
-            fingerprint: "",
+            fingerprint: defaultTrusted?.fingerprint ?? "",
             connection: connection,
-            isTrusted: false
+            isTrusted: defaultTrusted != nil
         )
 
         connection.stateUpdateHandler = { [weak self] state in
@@ -197,6 +199,23 @@ public final class ControlSessionServer: ObservableObject {
             peer.lastActive = Date()
         }
 
+        // In-band fingerprint authentication: automatically identify and trust reconnected devices
+        if let fp = jsonObject["fingerprint"] as? String, !fp.isEmpty {
+            if KeychainManager.shared.isFingerprintTrusted(fp) {
+                let devName = (jsonObject["device_name"] as? String) ??
+                    KeychainManager.shared.getTrustedDevices().first(where: { $0.fingerprint.caseInsensitiveCompare(fp) == .orderedSame })?.name
+                DispatchQueue.main.async {
+                    if !peer.isTrusted || peer.fingerprint != fp {
+                        peer.isTrusted = true
+                        peer.fingerprint = fp
+                        if let name = devName, !name.isEmpty {
+                            peer.name = name
+                        }
+                    }
+                }
+            }
+        }
+
         switch type {
         case "PAIR_REQUEST":
             handlePairRequest(jsonObject, from: connection, peer: peer)
@@ -205,7 +224,7 @@ public final class ControlSessionServer: ObservableObject {
         case "FILE_METADATA_HEADER":
             FileStreamingManager.shared.prepareIncomingTransfer(metadata: jsonObject)
         case "HEARTBEAT_PING":
-            handleHeartbeatPing(jsonObject, from: connection)
+            handleHeartbeatPing(jsonObject, from: connection, peer: peer)
         default:
             #if DEBUG
             print("[ControlServer] Received unhandled message type: \(type)")
@@ -304,12 +323,24 @@ public final class ControlSessionServer: ObservableObject {
         }
 
         // Verify trusted status (either peer isTrusted or fingerprint is in Keychain)
-        let isTrusted = peer.isTrusted || KeychainManager.shared.isFingerprintTrusted(peer.fingerprint)
+        let fp = (json["fingerprint"] as? String) ?? peer.fingerprint
+        let isTrusted = peer.isTrusted || (!fp.isEmpty && KeychainManager.shared.isFingerprintTrusted(fp))
         guard isTrusted else {
             #if DEBUG
             print("[ControlServer] Rejected clipboard from untrusted peer: \(peer.name)")
             #endif
             return
+        }
+
+        if !peer.isTrusted && !fp.isEmpty {
+            let devName = KeychainManager.shared.getTrustedDevices().first(where: { $0.fingerprint.caseInsensitiveCompare(fp) == .orderedSame })?.name
+            DispatchQueue.main.async {
+                peer.isTrusted = true
+                peer.fingerprint = fp
+                if let name = devName, !name.isEmpty {
+                    peer.name = name
+                }
+            }
         }
 
         #if DEBUG
@@ -325,13 +356,17 @@ public final class ControlSessionServer: ObservableObject {
 
     /// Broadcast copied text to all connected trusted Android companions.
     public func broadcastClipboard(text: String, hash: String, excluding: NWConnection? = nil) {
-        let payload: [String: Any] = [
+        let localFp = (try? CryptoManager.shared.getPublicKeyFingerprint()) ?? ""
+        var payload: [String: Any] = [
             "type": "CLIPBOARD_PAYLOAD",
             "content": text,
             "content_type": "text/plain",
             "content_hash": hash,
             "timestamp": ISO8601DateFormatter().string(from: Date())
         ]
+        if !localFp.isEmpty {
+            payload["fingerprint"] = localFp
+        }
 
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let jsonString = String(data: data, encoding: .utf8) else {
@@ -356,7 +391,21 @@ public final class ControlSessionServer: ObservableObject {
 
     // MARK: - Heartbeat
 
-    private func handleHeartbeatPing(_ json: [String: Any], from connection: NWConnection) {
+    private func handleHeartbeatPing(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
+        if let fp = json["fingerprint"] as? String, !fp.isEmpty, KeychainManager.shared.isFingerprintTrusted(fp) {
+            let devName = (json["device_name"] as? String) ??
+                KeychainManager.shared.getTrustedDevices().first(where: { $0.fingerprint.caseInsensitiveCompare(fp) == .orderedSame })?.name
+            DispatchQueue.main.async {
+                if !peer.isTrusted || peer.fingerprint != fp {
+                    peer.isTrusted = true
+                    peer.fingerprint = fp
+                    if let name = devName, !name.isEmpty {
+                        peer.name = name
+                    }
+                }
+            }
+        }
+
         let seq = json["seq"] as? Int ?? 0
         let pong: [String: Any] = [
             "type": "HEARTBEAT_PONG",

@@ -212,10 +212,13 @@ class ControlSocketClient(private val context: Context) {
                 isConnected = true
                 missedPongs = 0
 
-                // Send initial heartbeat ping to establish connection
+                // Send initial heartbeat ping to establish connection with in-band fingerprint
                 val ping = JSONObject().apply {
                     put("type", "HEARTBEAT_PING")
                     put("seq", heartbeatSeq++)
+                    put("fingerprint", KeyStoreManager.getPublicKeyFingerprint())
+                    put("device_id", getLocalDeviceId())
+                    put("device_name", android.os.Build.MODEL ?: "Android Device")
                     put("timestamp", getIso8601Timestamp())
                 }
                 writeLine(ping.toString())
@@ -291,6 +294,8 @@ class ControlSocketClient(private val context: Context) {
                 val ping = JSONObject().apply {
                     put("type", "HEARTBEAT_PING")
                     put("seq", heartbeatSeq++)
+                    put("fingerprint", KeyStoreManager.getPublicKeyFingerprint())
+                    put("device_id", getLocalDeviceId())
                     put("timestamp", getIso8601Timestamp())
                 }
                 writeLine(ping.toString())
@@ -437,6 +442,8 @@ class ControlSocketClient(private val context: Context) {
                     put("content", text)
                     put("content_type", "text/plain")
                     put("content_hash", hash)
+                    put("fingerprint", KeyStoreManager.getPublicKeyFingerprint())
+                    put("device_id", getLocalDeviceId())
                     put("timestamp", getIso8601Timestamp())
                 }
                 writeLine(payload.toString())
