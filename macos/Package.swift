@@ -19,6 +19,9 @@ let package = Package(
             exclude: [
                 "CordaMac.entitlements",
                 "Info.plist"
+            ],
+            resources: [
+                .process("Resources")
             ]
         )
     ]

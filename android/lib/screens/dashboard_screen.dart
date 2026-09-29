@@ -259,13 +259,22 @@ class _DashboardScreenState extends State<DashboardScreen>
       appBar: AppBar(
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                gradient: CordaTheme.aquaGradient,
-                borderRadius: BorderRadius.circular(10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/corda_logo_icon.png',
+                width: 28,
+                height: 28,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    gradient: CordaTheme.aquaGradient,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.link_rounded, color: Colors.white, size: 16),
+                ),
               ),
-              child: const Icon(Icons.link_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
             const Text(
@@ -295,46 +304,54 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            // Slogan Banner Card
+            // Slogan Hero Banner Card with Logo & Text
             Container(
-              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primaryContainer.withValues(alpha: 0.6),
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: colorScheme.outlineVariant.withValues(alpha: 0.4),
                 ),
+                gradient: LinearGradient(
+                  colors: [
+                    colorScheme.primaryContainer.withValues(alpha: 0.4),
+                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.auto_awesome_rounded, color: CordaTheme.aquaPrimary, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'The invisible cord between your Mac and Android',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Sinkronisasi clipboard instan (< 200 ms) & transfer file Wi-Fi lokal berkecepatan tinggi.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Image.asset(
+                      'assets/images/corda_logo_text.png',
+                      width: double.infinity,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.auto_awesome_rounded, color: CordaTheme.aquaPrimary, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'The invisible cord between your Mac and Android. Sinkronisasi clipboard instan (< 200 ms) & transfer file Wi-Fi lokal.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 16),

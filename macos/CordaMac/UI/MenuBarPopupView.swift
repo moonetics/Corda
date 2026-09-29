@@ -21,18 +21,26 @@ public struct MenuBarPopupView: View {
             VStack(alignment: .leading, spacing: 14) {
                 // Header
                 HStack(spacing: 10) {
-                    Image(systemName: "link.circle.fill")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.04, green: 0.52, blue: 1.0),   // Apple Blue #0A84FF
-                                    Color(red: 0.0, green: 0.82, blue: 0.83)    // Sonoma Cyan #00D2D3
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if let logoImg = loadLogoImage() {
+                        Image(nsImage: logoImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    } else {
+                        Image(systemName: "link.circle.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.04, green: 0.52, blue: 1.0),   // Apple Blue #0A84FF
+                                        Color(red: 0.0, green: 0.82, blue: 0.83)    // Sonoma Cyan #00D2D3
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
+                    }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Corda")
@@ -260,7 +268,36 @@ public struct MenuBarPopupView: View {
             }
         }
     }
+
+    private func loadLogoImage() -> NSImage? {
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "corda_logo_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        #endif
+        if let img = NSImage(named: "corda_logo_icon") {
+            return img
+        }
+        if let url = Bundle.main.url(forResource: "corda_logo_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        let fallbackPaths = [
+            "macos/CordaMac/Resources/corda_logo_icon.png",
+            "assets/corda_logo_icon.png",
+            "../assets/corda_logo_icon.png"
+        ]
+        for path in fallbackPaths {
+            if FileManager.default.fileExists(atPath: path),
+               let img = NSImage(contentsOfFile: path) {
+                return img
+            }
+        }
+        return nil
+    }
 }
+
 
 /// Sonoma Aqua styled live transfer card.
 struct ActiveTransferCardView: View {

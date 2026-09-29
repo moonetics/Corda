@@ -75,14 +75,25 @@ struct PairingModalView: View {
     var body: some View {
         VStack(spacing: 16) {
             // Header
-            VStack(spacing: 4) {
-                Text("Pair with Android")
-                    .font(.system(size: 15, weight: .bold))
-                Text("Scan this QR Code using Corda on your phone")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: 8) {
+                if let logoImg = loadLogoImage() {
+                    Image(nsImage: logoImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                VStack(spacing: 2) {
+                    Text("Pair with Android")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Scan this QR Code using Corda on your phone")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
+
 
             // QR Code Container
             ZStack {
@@ -214,5 +225,33 @@ struct PairingModalView: View {
             }
         }
         return address
+    }
+
+    private func loadLogoImage() -> NSImage? {
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "corda_logo_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        #endif
+        if let img = NSImage(named: "corda_logo_icon") {
+            return img
+        }
+        if let url = Bundle.main.url(forResource: "corda_logo_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        let fallbackPaths = [
+            "macos/CordaMac/Resources/corda_logo_icon.png",
+            "assets/corda_logo_icon.png",
+            "../assets/corda_logo_icon.png"
+        ]
+        for path in fallbackPaths {
+            if FileManager.default.fileExists(atPath: path),
+               let img = NSImage(contentsOfFile: path) {
+                return img
+            }
+        }
+        return nil
     }
 }
