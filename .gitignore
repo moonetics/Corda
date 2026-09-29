@@ -45,5 +45,8 @@ android/captures/
 *.tmp
 tmp/
 
-# Documentation
+# Documentation & Handoffs
 docs/
+*coding-handoff*
+docs/coding-handoff.md
+
