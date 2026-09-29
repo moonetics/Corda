@@ -67,6 +67,7 @@ class CordaForegroundService : Service() {
         acquireMulticastLock()
         initNsdManager()
         observeClipboardEvents()
+        observeTransferEvents()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -252,6 +253,34 @@ class CordaForegroundService : Service() {
                 Log.i(TAG, "ForegroundService memancarkan teks salinan ke Mac: '${event.text.take(40)}...'")
                 val hash = ClipboardAccessibilityService.computeSha256(event.text)
                 socketClient?.sendClipboard(event.text, hash)
+            }
+        }
+    }
+
+    private fun observeTransferEvents() {
+        serviceScope.launch {
+            CordaEventBus.transferEvents.collect { event ->
+                updateTransferNotification(event.fileName, event.progressPercent, event.isCompleted)
+            }
+        }
+    }
+
+    private fun updateTransferNotification(fileName: String, progressPercent: Int, isCompleted: Boolean) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(if (isCompleted) "Transfer Selesai ✨" else "Mentransfer $fileName")
+            .setContentText(if (isCompleted) "$fileName tersimpan di Downloads/Corda" else "$progressPercent%")
+            .setOngoing(!isCompleted)
+            .setProgress(100, progressPercent, false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
+
+        if (isCompleted) {
+            serviceScope.launch {
+                kotlinx.coroutines.delay(3000)
+                startSilentForeground()
             }
         }
     }

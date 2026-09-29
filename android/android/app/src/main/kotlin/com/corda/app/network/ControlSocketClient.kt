@@ -60,6 +60,7 @@ class ControlSocketClient(private val context: Context) {
 
     private val trustedStore = TrustedDeviceStore(context)
     private val mainHandler = Handler(Looper.getMainLooper())
+    val dataStreamClient = FileDataStreamClient(context)
 
     /**
      * Connect and initiate the In-Band Pairing Handshake with the Mac.
@@ -275,6 +276,11 @@ class ControlSocketClient(private val context: Context) {
                     }
                     writeLine(pong.toString())
                 }
+                "FILE_METADATA_HEADER" -> {
+                    val host = connectedHost ?: "127.0.0.1"
+                    Log.i(TAG, "Menerima FILE_METADATA_HEADER dari Mac. Memulai stream penerimaan data biner...")
+                    dataStreamClient.startReceiving(json, host, FileDataStreamClient.DATA_PORT)
+                }
                 "HEARTBEAT_PONG" -> {
                     Log.d(TAG, "Heartbeat PONG diterima dari Mac.")
                 }
@@ -308,6 +314,21 @@ class ControlSocketClient(private val context: Context) {
                 Log.e(TAG, "Gagal mengirim CLIPBOARD_PAYLOAD", e)
             }
         }
+    }
+
+    /**
+     * Send raw JSON object over Control Channel.
+     */
+    fun sendRawJson(json: JSONObject) {
+        writeLine(json.toString())
+    }
+
+    /**
+     * Send files to Mac.
+     */
+    fun sendFiles(files: List<java.io.File>) {
+        val host = connectedHost ?: return
+        dataStreamClient.sendFiles(files, host, this)
     }
 
     @Synchronized

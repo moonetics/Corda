@@ -32,12 +32,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             #endif
             ControlSessionServer.shared.broadcastClipboard(text: text, hash: hash)
         }
+
+        // Start listening for high-speed file streams on Port 54322
+        FileStreamingManager.shared.startListening()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         BonjourDiscoveryManager.shared.stopAdvertising()
         BonjourDiscoveryManager.shared.stopBrowsing()
         MacClipboardObserver.shared.stopObserving()
+        FileStreamingManager.shared.stopListening()
     }
 }
 

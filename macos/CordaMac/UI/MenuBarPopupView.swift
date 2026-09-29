@@ -7,6 +7,7 @@ public struct MenuBarPopupView: View {
     @ObservedObject private var discovery = BonjourDiscoveryManager.shared
     @ObservedObject private var clipboard = MacClipboardObserver.shared
     @ObservedObject private var server = ControlSessionServer.shared
+    @ObservedObject private var fileStreaming = FileStreamingManager.shared
 
     @State private var isDropTargeted: Bool = false
     @State private var droppedFilesSummary: String? = nil
@@ -94,6 +95,11 @@ public struct MenuBarPopupView: View {
                             DeviceRowView(device: device)
                         }
                     }
+                }
+
+                // Active File Transfer Progress Card
+                if let transfer = fileStreaming.activeTransfer {
+                    ActiveTransferCardView(transfer: transfer)
                 }
 
                 // File DropZone Section
@@ -198,17 +204,108 @@ public struct MenuBarPopupView: View {
     }
 
     private func handleDroppedItems(_ providers: [NSItemProvider]) {
-        var count = 0
+        guard let peer = server.connectedPeers.first(where: { $0.isTrusted }) ?? server.connectedPeers.first else {
+            DispatchQueue.main.async {
+                self.droppedFilesSummary = "Hubungkan perangkat Android terlebih dahulu."
+            }
+            return
+        }
+
+        var urls: [URL] = []
+        let group = DispatchGroup()
+
         for provider in providers {
+            group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
                 if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    count += 1
-                    DispatchQueue.main.async {
-                        self.droppedFilesSummary = "\(count) file(s) queued: \(url.lastPathComponent)"
-                    }
+                    urls.append(url)
+                } else if let url = item as? URL {
+                    urls.append(url)
                 }
             }
         }
+
+        group.notify(queue: .main) {
+            if !urls.isEmpty {
+                self.droppedFilesSummary = "Mengirim \(urls.count) file ke \(peer.name)..."
+                FileStreamingManager.shared.sendFiles(urls: urls, to: peer)
+            }
+        }
+    }
+}
+
+/// Sonoma Aqua styled live transfer card.
+struct ActiveTransferCardView: View {
+    let transfer: ActiveTransferProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: transfer.direction == "outgoing" ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.04, green: 0.52, blue: 1.0),
+                                Color(red: 0.0, green: 0.82, blue: 0.83)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(transfer.currentFileName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text(transfer.isCompleted ? "Transfer Selesai ✨" : "Berkas \(transfer.currentFileIndex + 1) dari \(transfer.totalFiles) • \(String(format: "%.1f", transfer.speedMBs)) MB/s")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text("\(transfer.progressPercent)%")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+            }
+
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 5)
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.04, green: 0.52, blue: 1.0),
+                                    Color(red: 0.0, green: 0.82, blue: 0.83)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(transfer.progressFraction))), height: 5)
+                        .animation(.linear(duration: 0.2), value: transfer.progressFraction)
+                }
+            }
+            .frame(height: 5)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color(red: 0.0, green: 0.82, blue: 0.83).opacity(0.3), lineWidth: 1)
+        )
     }
 }
 

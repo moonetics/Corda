@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/platform_bridge.dart';
 import '../theme/corda_theme.dart';
@@ -23,9 +24,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _isServiceRunning = false;
   final List<DiscoveredDeviceModel> _discoveredDevices = [];
   ClipboardEventModel? _lastClipboardEvent;
+  TransferEventModel? _activeTransfer;
 
   StreamSubscription<ClipboardEventModel>? _clipboardSub;
   StreamSubscription<DiscoveredDeviceModel>? _discoverySub;
+  StreamSubscription<TransferEventModel>? _transferSub;
 
   @override
   void initState() {
@@ -39,6 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.removeObserver(this);
     _clipboardSub?.cancel();
     _discoverySub?.cancel();
+    _transferSub?.cancel();
     super.dispose();
   }
 
@@ -82,6 +86,15 @@ class _DashboardScreenState extends State<DashboardScreen>
           } else {
             _discoveredDevices.add(device);
           }
+        });
+      }
+    });
+
+    // Subscribe to binary file transfer events
+    _transferSub = PlatformBridge.instance.transferStream.listen((event) {
+      if (mounted) {
+        setState(() {
+          _activeTransfer = event;
         });
       }
     });
@@ -536,6 +549,12 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             const SizedBox(height: 16),
 
+            // Active Binary File Transfer Progress Card
+            if (_activeTransfer != null) ...[
+              _buildActiveTransferCard(theme, colorScheme),
+              const SizedBox(height: 16),
+            ],
+
             // Quick Actions Card
             Row(
               children: [
@@ -583,12 +602,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: InkWell(
                       borderRadius: BorderRadius.circular(18),
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Fitur transfer file akan aktif di Phase 5.'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                        _showSendFileDialog(context, theme, colorScheme);
                       },
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -728,6 +742,230 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveTransferCard(ThemeData theme, ColorScheme colorScheme) {
+    final transfer = _activeTransfer!;
+    final isIncoming = transfer.direction == 'incoming';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: CordaTheme.aquaPrimary.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: isIncoming ? CordaTheme.aquaGradient : null,
+                  color: isIncoming ? null : CordaTheme.mintGreen,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isIncoming ? Icons.downloading_rounded : Icons.upload_file_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      transfer.fileName,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      transfer.isCompleted
+                          ? 'Transfer Selesai ✨ Tersimpan di Downloads/Corda'
+                          : 'Berkas ${transfer.fileIndex + 1} dari ${transfer.totalFiles} • ${transfer.speedMBs.toStringAsFixed(1)} MB/s',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: transfer.isCompleted ? CordaTheme.mintGreen : colorScheme.onSurfaceVariant,
+                        fontWeight: transfer.isCompleted ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (transfer.isCompleted)
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: 'Tutup',
+                  onPressed: () {
+                    setState(() => _activeTransfer = null);
+                  },
+                )
+              else
+                Text(
+                  '${transfer.progressPercent}%',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: CordaTheme.aquaPrimary,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: transfer.isCompleted ? 1.0 : (transfer.progressPercent / 100.0).clamp(0.0, 1.0),
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                transfer.isCompleted ? CordaTheme.mintGreen : CordaTheme.aquaPrimary,
+              ),
+              minHeight: 6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSendFileDialog(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
+    final pathController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          top: 24,
+          left: 20,
+          right: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: CordaTheme.mintGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.upload_file_rounded, color: CordaTheme.mintGreen, size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Kirim Berkas ke Mac',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Streaming langsung 256 KB chunk melalui Port 54322 dengan verifikasi SHA-256.',
+              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: pathController,
+              decoration: InputDecoration(
+                labelText: 'Jalur File Lengkap di Perangkat',
+                hintText: '/sdcard/Download/dokumen.pdf',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                prefixIcon: const Icon(Icons.folder_open_rounded),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      Navigator.pop(ctx);
+                      final tempDir = Directory.systemTemp.path;
+                      final sampleFile = File('$tempDir/Corda_Catatan_Demo.txt');
+                      await sampleFile.writeAsString(
+                        'Halo dari Corda Android!\n\n'
+                        'Dokumen ini dikirimkan melalui Jalur Streaming Biner Port 54322.\n'
+                        'Kapasitas buffer 256 KB per frame dengan validasi integritas per-chunk SHA-256.\n'
+                        'Waktu pengiriman: ${DateTime.now().toIso8601String()}',
+                      );
+
+                      final ok = await PlatformBridge.instance.sendFile(sampleFile.path);
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(
+                          backgroundColor: ok ? CordaTheme.mintGreen : Colors.redAccent,
+                          content: Text(
+                            ok
+                                ? 'Mengirim Corda_Catatan_Demo.txt ke Mac...'
+                                : 'Gagal mengirim file. Pastikan Mac terhubung via pairing.',
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.note_alt_outlined, size: 16),
+                    label: const Text('Kirim Demo File', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CordaTheme.aquaPrimary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () async {
+                      final path = pathController.text.trim();
+                      if (path.isEmpty) return;
+
+                      final messenger = ScaffoldMessenger.of(context);
+                      Navigator.pop(ctx);
+                      final ok = await PlatformBridge.instance.sendFile(path);
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(
+                          backgroundColor: ok ? CordaTheme.mintGreen : Colors.redAccent,
+                          content: Text(
+                            ok
+                                ? 'Mengirim berkas ke Mac...'
+                                : 'Gagal mengirim berkas. Periksa jalur file dan koneksi Mac.',
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.send_rounded, size: 16),
+                    label: const Text('Kirim Berkas', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

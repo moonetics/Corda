@@ -75,18 +75,56 @@ class DiscoveredDeviceModel {
   }
 }
 
+class TransferEventModel {
+  final String transferId;
+  final String fileName;
+  final String direction;
+  final int fileIndex;
+  final int totalFiles;
+  final int progressPercent;
+  final double speedMBs;
+  final bool isCompleted;
+
+  const TransferEventModel({
+    required this.transferId,
+    required this.fileName,
+    required this.direction,
+    required this.fileIndex,
+    required this.totalFiles,
+    required this.progressPercent,
+    required this.speedMBs,
+    required this.isCompleted,
+  });
+
+  factory TransferEventModel.fromMap(Map<dynamic, dynamic> map) {
+    return TransferEventModel(
+      transferId: map['transferId'] as String? ?? '',
+      fileName: map['fileName'] as String? ?? 'File',
+      direction: map['direction'] as String? ?? 'incoming',
+      fileIndex: (map['fileIndex'] as num?)?.toInt() ?? 0,
+      totalFiles: (map['totalFiles'] as num?)?.toInt() ?? 1,
+      progressPercent: (map['progressPercent'] as num?)?.toInt() ?? 0,
+      speedMBs: (map['speedMBs'] as num?)?.toDouble() ?? 0.0,
+      isCompleted: map['isCompleted'] as bool? ?? false,
+    );
+  }
+}
+
 class PlatformBridge {
   static const MethodChannel _channel = MethodChannel('com.corda.app/channel');
   static const EventChannel _clipboardEventChannel =
       EventChannel('com.corda.app/clipboard_events');
   static const EventChannel _discoveryEventChannel =
       EventChannel('com.corda.app/discovery_events');
+  static const EventChannel _transferEventChannel =
+      EventChannel('com.corda.app/transfer_events');
 
   static final PlatformBridge instance = PlatformBridge._internal();
   PlatformBridge._internal();
 
   Stream<ClipboardEventModel>? _clipboardStream;
   Stream<DiscoveredDeviceModel>? _discoveryStream;
+  Stream<TransferEventModel>? _transferStream;
 
   Future<PermissionStatusModel> checkPermissions() async {
     try {
@@ -180,5 +218,22 @@ class PlatformBridge {
         .map((data) => DiscoveredDeviceModel.fromMap(data as Map<dynamic, dynamic>))
         .handleError((_) => null);
     return _discoveryStream!;
+  }
+
+  Future<bool> sendFile(String filePath) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('sendFile', {'filePath': filePath});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Stream<TransferEventModel> get transferStream {
+    _transferStream ??= _transferEventChannel
+        .receiveBroadcastStream()
+        .map((data) => TransferEventModel.fromMap(data as Map<dynamic, dynamic>))
+        .handleError((_) => null);
+    return _transferStream!;
   }
 }

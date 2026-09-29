@@ -32,10 +32,12 @@ class MainActivity : FlutterActivity() {
         private const val METHOD_CHANNEL = "com.corda.app/channel"
         private const val CLIPBOARD_EVENT_CHANNEL = "com.corda.app/clipboard_events"
         private const val DISCOVERY_EVENT_CHANNEL = "com.corda.app/discovery_events"
+        private const val TRANSFER_EVENT_CHANNEL = "com.corda.app/transfer_events"
     }
 
     private var clipboardJob: Job? = null
     private var discoveryJob: Job? = null
+    private var transferJob: Job? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -100,6 +102,22 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
+                "sendFile" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    val file = java.io.File(filePath)
+                    if (!file.exists()) {
+                        result.error("FILE_NOT_FOUND", "Berkas tidak ditemukan: $filePath", null)
+                        return@setMethodCallHandler
+                    }
+                    val service = CordaForegroundService.instance
+                    val socketClient = service?.socketClient
+                    if (socketClient != null && socketClient.isConnected) {
+                        socketClient.sendFiles(listOf(file))
+                        result.success(true)
+                    } else {
+                        result.error("NOT_CONNECTED", "Belum terhubung dengan Mac.", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -154,6 +172,36 @@ class MainActivity : FlutterActivity() {
                 override fun onCancel(arguments: Any?) {
                     discoveryJob?.cancel()
                     discoveryJob = null
+                }
+            }
+        )
+
+        // Transfer EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, TRANSFER_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    transferJob?.cancel()
+                    transferJob = CoroutineScope(Dispatchers.Main).launch {
+                        CordaEventBus.transferEvents.collect { event ->
+                            events?.success(
+                                mapOf(
+                                    "transferId" to event.transferId,
+                                    "fileName" to event.fileName,
+                                    "direction" to event.direction,
+                                    "fileIndex" to event.fileIndex,
+                                    "totalFiles" to event.totalFiles,
+                                    "progressPercent" to event.progressPercent,
+                                    "speedMBs" to event.speedMBs,
+                                    "isCompleted" to event.isCompleted
+                                )
+                            )
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    transferJob?.cancel()
+                    transferJob = null
                 }
             }
         )

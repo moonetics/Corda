@@ -30,6 +30,17 @@ data class ServiceState(
     val statusMessage: String = "Siaga"
 )
 
+data class TransferProgressEvent(
+    val transferId: String,
+    val fileName: String,
+    val direction: String, // "incoming" or "outgoing"
+    val fileIndex: Int,
+    val totalFiles: Int,
+    val progressPercent: Int,
+    val speedMBs: Double,
+    val isCompleted: Boolean
+)
+
 /**
  * Thread-safe Reactive Event Bus linking Android native services
  * (ClipboardAccessibilityService, CordaForegroundService, and MainActivity).
@@ -58,6 +69,13 @@ object CordaEventBus {
     )
     val serviceState: SharedFlow<ServiceState> = _serviceState.asSharedFlow()
 
+    private val _transferEvents = MutableSharedFlow<TransferProgressEvent>(
+        replay = 1,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val transferEvents: SharedFlow<TransferProgressEvent> = _transferEvents.asSharedFlow()
+
     fun postClipboardEvent(event: ClipboardCopiedEvent) {
         scope.launch {
             _clipboardEvents.emit(event)
@@ -73,6 +91,12 @@ object CordaEventBus {
     fun postServiceState(state: ServiceState) {
         scope.launch {
             _serviceState.emit(state)
+        }
+    }
+
+    fun postTransferEvent(event: TransferProgressEvent) {
+        scope.launch {
+            _transferEvents.emit(event)
         }
     }
 }
