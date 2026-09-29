@@ -13,6 +13,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.core.content.FileProvider
+import com.corda.app.accessibility.ClipboardAccessibilityService
+import com.corda.app.events.ClipboardCopiedEvent
+import com.corda.app.security.KeyStoreManager
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -42,6 +48,30 @@ class FileDataStreamClient(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
     // MARK: - Receiver (Mac -> Android)
+
+    /**
+     * Start receiving incoming clipboard file from Mac following CLIPBOARD_FILE_ANNOUNCE.
+     */
+    fun startReceivingClipboardFile(metadata: JSONObject, host: String, port: Int = DATA_PORT) {
+        val enriched = JSONObject(metadata.toString())
+        val fileName = metadata.optString("file_name", "clipboard_file")
+        val sizeBytes = metadata.optLong("size_bytes", 0L)
+        val sha256 = metadata.optString("sha256", "")
+        enriched.put("is_clipboard", true)
+        enriched.put("total_files", 1)
+        enriched.put("total_bytes", sizeBytes)
+        val filesArr = org.json.JSONArray().apply {
+            put(JSONObject().apply {
+                put("name", fileName)
+                put("relative_path", fileName)
+                put("size_bytes", sizeBytes)
+                put("sha256", sha256)
+                put("mime_type", metadata.optString("mime_type", ""))
+            })
+        }
+        enriched.put("files", filesArr)
+        startReceiving(enriched, host, port)
+    }
 
     /**
      * Start receiving incoming transfer from Mac following FILE_METADATA_HEADER announcement.
@@ -178,6 +208,11 @@ class FileDataStreamClient(private val context: Context) {
                                 src.delete()
                             }
                             Log.i(TAG, "File tersimpan dengan sukses: ${destFile.absolutePath}")
+
+                            // If this is an auto-synced clipboard file/image, inject directly into Android Clipboard!
+                            if (metadata.optBoolean("is_clipboard", false)) {
+                                injectFileToClipboard(destFile, finalHex, fileMeta?.optString("mime_type", ""))
+                            }
                         } else {
                             Log.e(TAG, "Full-file hash mismatch! Expected: $expectedSha256, Got: $finalHex. Menghapus file sementara.")
                             tempFile?.delete()
@@ -232,6 +267,113 @@ class FileDataStreamClient(private val context: Context) {
     }
 
     // MARK: - Sender (Android -> Mac)
+
+    /**
+     * Send copied clipboard file or image (<= 50MB) to Mac.
+     */
+    fun sendClipboardFile(
+        file: File,
+        mimeType: String,
+        sha256: String,
+        host: String,
+        controlClient: ControlSocketClient
+    ) {
+        scope.launch {
+            var socket: Socket? = null
+            val transferId = UUID.randomUUID()
+            try {
+                if (!file.exists()) return@launch
+                val fileSize = file.length()
+                if (fileSize <= 0 || fileSize > 52428800L) return@launch // <= 50MB
+
+                // 1. Announce CLIPBOARD_FILE_ANNOUNCE on Control Channel (Port 54321)
+                val announce = JSONObject().apply {
+                    put("type", "CLIPBOARD_FILE_ANNOUNCE")
+                    put("transfer_id", transferId.toString())
+                    put("file_name", file.name)
+                    put("mime_type", mimeType)
+                    put("size_bytes", fileSize)
+                    put("sha256", sha256)
+                    put("fingerprint", KeyStoreManager.getPublicKeyFingerprint())
+                    put("device_id", controlClient.getLocalDeviceId())
+                    put("timestamp", controlClient.getIso8601Timestamp())
+                }
+                controlClient.sendRawJson(announce)
+                Log.i(TAG, "Mengumumkan CLIPBOARD_FILE_ANNOUNCE ke Mac untuk ${file.name} (${fileSize} bytes)...")
+
+                // 2. Connect to Mac Port 54322 and stream binary chunks
+                socket = Socket()
+                socket.connect(InetSocketAddress(host, DATA_PORT), 6000)
+                val out = BufferedOutputStream(socket.getOutputStream(), CHUNK_SIZE)
+
+                val totalChunks = if (fileSize == 0L) 1 else Math.ceil(fileSize.toDouble() / CHUNK_SIZE).toInt()
+
+                FileInputStream(file).use { fis ->
+                    val buffer = ByteArray(CHUNK_SIZE)
+                    var chunkIdx = 0
+
+                    while (true) {
+                        val bytesRead = fis.read(buffer)
+                        if (bytesRead <= 0 && chunkIdx > 0) break
+
+                        val currentPayloadLen = maxOf(0, bytesRead)
+                        val payloadSlice = if (currentPayloadLen == CHUNK_SIZE) buffer else buffer.copyOf(currentPayloadLen)
+
+                        val mdChunk = MessageDigest.getInstance("SHA-256")
+                        val chunkChecksum = mdChunk.digest(payloadSlice)
+
+                        val chunkHeader = buildHeader(
+                            msgType = 0x01.toByte(), // CHUNK_DATA
+                            transferUuid = transferId,
+                            fileIndex = 0,
+                            chunkIndex = chunkIdx,
+                            totalChunks = totalChunks,
+                            payloadLength = currentPayloadLen
+                        )
+
+                        out.write(chunkHeader)
+                        out.write(payloadSlice)
+                        out.write(chunkChecksum)
+                        out.flush()
+
+                        chunkIdx++
+                        if (bytesRead <= 0) break
+                    }
+                }
+
+                // 3. Send FILE_COMPLETE (msgType = 0x02)
+                val fileCompleteHeader = buildHeader(
+                    msgType = 0x02.toByte(),
+                    transferUuid = transferId,
+                    fileIndex = 0,
+                    chunkIndex = 0,
+                    totalChunks = totalChunks,
+                    payloadLength = 0
+                )
+                out.write(fileCompleteHeader)
+                out.flush()
+
+                // 4. Send TRANSFER_COMPLETE (msgType = 0x03)
+                val transferCompleteHeader = buildHeader(
+                    msgType = 0x03.toByte(),
+                    transferUuid = transferId,
+                    fileIndex = 1,
+                    chunkIndex = 0,
+                    totalChunks = 0,
+                    payloadLength = 0
+                )
+                out.write(transferCompleteHeader)
+                out.flush()
+
+                Log.i(TAG, "Clipboard file ${file.name} berhasil distreaming ke Mac!")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal streaming clipboard file ke Mac: ${e.message}", e)
+            } finally {
+                try { socket?.close() } catch (_: Exception) {}
+            }
+        }
+    }
 
     /**
      * Send files to Mac on Port 54322, announcing metadata first via ControlSocketClient.
@@ -486,6 +628,61 @@ class FileDataStreamClient(private val context: Context) {
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun injectFileToClipboard(file: File, sha256: String, mimeTypeHint: String? = null) {
+        try {
+            val contentUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+
+            val mimeType = if (!mimeTypeHint.isNullOrEmpty()) mimeTypeHint else getMimeType(file)
+            val clipData = ClipData.newUri(context.contentResolver, file.name, contentUri)
+
+            // Register remote hash to prevent echo loops
+            ClipboardAccessibilityService.registerRemoteHash(sha256.lowercase())
+
+            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboardManager?.setPrimaryClip(clipData)
+
+            triggerTickHaptic()
+
+            val isImage = mimeType.startsWith("image/")
+            val label = if (isImage) "🖼️ ${file.name}" else "📁 ${file.name}"
+
+            CordaEventBus.postClipboardEvent(
+                ClipboardCopiedEvent(
+                    text = label,
+                    timestamp = System.currentTimeMillis(),
+                    isSensitive = false,
+                    sourcePackage = "com.apple.mac"
+                )
+            )
+            Log.i(TAG, "File/Gambar berhasil diinjeksikan ke Android Clipboard: ${file.name} ($contentUri)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal menginjeksi file ke clipboard: ${e.message}", e)
+        }
+    }
+
+    private fun getMimeType(file: File): String {
+        val ext = file.extension.lowercase()
+        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+    }
+
+    private fun triggerTickHaptic() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                vm?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(25)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun triggerSuccessHaptic() {

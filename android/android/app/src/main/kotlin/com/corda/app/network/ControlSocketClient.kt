@@ -399,6 +399,12 @@ class ControlSocketClient(private val context: Context) {
                     Log.i(TAG, "Menerima FILE_METADATA_HEADER dari Mac. Memulai stream penerimaan data biner...")
                     dataStreamClient.startReceiving(json, host, FileDataStreamClient.DATA_PORT)
                 }
+                "CLIPBOARD_FILE_ANNOUNCE" -> {
+                    val host = connectedHost ?: "127.0.0.1"
+                    val fileName = json.optString("file_name", "clipboard_file")
+                    Log.i(TAG, "Menerima CLIPBOARD_FILE_ANNOUNCE dari Mac ($fileName). Memulai streaming file clipboard...")
+                    dataStreamClient.startReceivingClipboardFile(json, host, FileDataStreamClient.DATA_PORT)
+                }
                 "HEARTBEAT_PONG" -> {
                     missedPongs = 0
                     Log.d(TAG, "Heartbeat PONG diterima dari Mac (koneksi aktif).")
@@ -469,6 +475,14 @@ class ControlSocketClient(private val context: Context) {
         dataStreamClient.sendFiles(files, host, this)
     }
 
+    /**
+     * Send clipboard file or image (<= 50MB) to Mac.
+     */
+    fun sendClipboardFile(file: java.io.File, mimeType: String, sha256: String) {
+        val host = connectedHost ?: return
+        dataStreamClient.sendClipboardFile(file, mimeType, sha256, host, this)
+    }
+
     @Synchronized
     private fun writeLine(line: String) {
         try {
@@ -500,7 +514,7 @@ class ControlSocketClient(private val context: Context) {
         missedPongs = 0
     }
 
-    private fun getLocalDeviceId(): String {
+    fun getLocalDeviceId(): String {
         val prefs = context.getSharedPreferences("com.corda.app.prefs", Context.MODE_PRIVATE)
         var id = prefs.getString("local_device_uuid", null)
         if (id == null) {
@@ -510,7 +524,7 @@ class ControlSocketClient(private val context: Context) {
         return id
     }
 
-    private fun getIso8601Timestamp(): String {
+    fun getIso8601Timestamp(): String {
         val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
         df.timeZone = TimeZone.getTimeZone("UTC")
         return df.format(Date())

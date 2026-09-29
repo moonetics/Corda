@@ -14,7 +14,8 @@
         "HEARTBEAT_PING",
         "HEARTBEAT_PONG",
         "FILE_METADATA_HEADER",
-        "FILE_TRANSFER_ABORT"
+        "FILE_TRANSFER_ABORT",
+        "CLIPBOARD_FILE_ANNOUNCE"
       ]
     },
     "timestamp": {
@@ -29,7 +30,8 @@
     { "$ref": "#/definitions/HeartbeatPing" },
     { "$ref": "#/definitions/HeartbeatPong" },
     { "$ref": "#/definitions/FileMetadataHeader" },
-    { "$ref": "#/definitions/FileTransferAbort" }
+    { "$ref": "#/definitions/FileTransferAbort" },
+    { "$ref": "#/definitions/ClipboardFileAnnounce" }
   ],
   "definitions": {
     "PairRequest": {
@@ -148,6 +150,25 @@
         "reason": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
+    },
+    "ClipboardFileAnnounce": {
+      "type": "object",
+      "required": ["type", "transfer_id", "file_name", "mime_type", "size_bytes", "sha256", "timestamp"],
+      "properties": {
+        "type": { "const": "CLIPBOARD_FILE_ANNOUNCE" },
+        "transfer_id": { "type": "string", "format": "uuid" },
+        "file_name": { "type": "string", "minLength": 1 },
+        "mime_type": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 52428800 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$"
+        },
+        "device_id": { "type": "string", "format": "uuid" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   }
 }
+

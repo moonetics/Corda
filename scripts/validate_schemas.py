@@ -80,6 +80,16 @@ def validate_message(msg: dict, schema: dict) -> None:
         assert is_valid_uuid(msg["transfer_id"]), "Invalid transfer_id UUID"
         assert msg.get("reason"), "Missing reason in abort message"
 
+    elif msg_type == "CLIPBOARD_FILE_ANNOUNCE":
+        def_spec = definitions["ClipboardFileAnnounce"]
+        for req in def_spec["required"]:
+            assert req in msg, f"Missing required field {req} in CLIPBOARD_FILE_ANNOUNCE"
+        assert is_valid_uuid(msg["transfer_id"]), "Invalid transfer_id UUID"
+        assert msg.get("file_name"), "Missing file_name in CLIPBOARD_FILE_ANNOUNCE"
+        assert msg.get("mime_type"), "Missing mime_type in CLIPBOARD_FILE_ANNOUNCE"
+        assert isinstance(msg.get("size_bytes"), int) and 1 <= msg["size_bytes"] <= 52428800, "size_bytes must be between 1 and 50MB"
+        assert is_valid_sha256(msg.get("sha256", "")), "Invalid sha256 in CLIPBOARD_FILE_ANNOUNCE"
+
     else:
         raise ValueError(f"Unknown message type: {msg_type}")
 
@@ -154,6 +164,15 @@ def main():
             "transfer_id": "11223344-5566-7788-99aa-bbccddeeff00",
             "reason": "Cancelled by user on macOS",
             "timestamp": "2026-09-29T14:16:02.500Z"
+        },
+        {
+            "type": "CLIPBOARD_FILE_ANNOUNCE",
+            "transfer_id": "33445566-7788-99aa-bbcc-ddeeff001122",
+            "file_name": "shared_image.png",
+            "mime_type": "image/png",
+            "size_bytes": 2048000,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "timestamp": "2026-09-29T14:17:00.000Z"
         }
     ]
 
@@ -162,7 +181,7 @@ def main():
         validate_message(sample, schema)
         print(f"  [OK] Validated {m_type}")
 
-    print("\n✅ All 7 message types validated successfully against protocol definitions!")
+    print("\n✅ All 8 message types validated successfully against protocol definitions!")
 
 if __name__ == "__main__":
     main()

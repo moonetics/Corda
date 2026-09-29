@@ -181,6 +181,23 @@ public final class FileStreamingManager: ObservableObject {
 
     // MARK: - Binary Frame Receiver (Android -> Mac)
 
+    public func prepareIncomingClipboardTransfer(metadata: [String: Any]) {
+        var enriched = metadata
+        let fileName = metadata["file_name"] as? String ?? "clipboard_file"
+        let sizeBytes = (metadata["size_bytes"] as? NSNumber)?.int64Value ?? 0
+        let sha256 = metadata["sha256"] as? String ?? ""
+        enriched["is_clipboard"] = true
+        enriched["total_files"] = 1
+        enriched["total_bytes"] = sizeBytes
+        enriched["files"] = [[
+            "name": fileName,
+            "relative_path": fileName,
+            "size_bytes": sizeBytes,
+            "sha256": sha256
+        ]]
+        prepareIncomingTransfer(metadata: enriched)
+    }
+
     public func prepareIncomingTransfer(metadata: [String: Any]) {
         self.currentReceiveMetadata = metadata
         self.currentTransferTransferredBytes = 0
@@ -326,6 +343,12 @@ public final class FileStreamingManager: ObservableObject {
             #if DEBUG
             print("[DataStream] File verified successfully & saved to: \(destURL.path)")
             #endif
+
+            // If this is an auto-synced clipboard file/image, write to macOS NSPasteboard immediately
+            if metadata["is_clipboard"] as? Bool == true {
+                let mimeType = metadata["mime_type"] as? String ?? "application/octet-stream"
+                MacClipboardObserver.shared.writeRemoteFile(localURL: destURL, mimeType: mimeType, hash: finalHex)
+            }
         } else {
             #if DEBUG
             print("[DataStream] Whole-file SHA256 mismatch! Expected: \(expectedSha256), Got: \(finalHex). Deleting corrupt file.")
@@ -418,6 +441,54 @@ public final class FileStreamingManager: ObservableObject {
     }
 
     // MARK: - Binary Frame Sender (Mac -> Android)
+
+    /// Send a copied clipboard file or image (<= 50MB) to connected peers with clipboard flag
+    public func sendClipboardFile(url: URL, mimeType: String, sizeBytes: Int64, sha256: String) {
+        queue.async {
+            let connectedPeers = ControlSessionServer.shared.connectedPeers.filter {
+                $0.isTrusted || KeychainManager.shared.isFingerprintTrusted($0.fingerprint)
+            }
+            guard !connectedPeers.isEmpty else { return }
+
+            let transferId = UUID()
+            let item = TransferFileItem(
+                name: url.lastPathComponent,
+                relativePath: url.lastPathComponent,
+                sizeBytes: sizeBytes,
+                sha256: sha256
+            )
+            let pending = PendingOutgoingTransfer(
+                transferId: transferId,
+                manifest: [item],
+                totalBytes: sizeBytes,
+                fileURLs: [url]
+            )
+            self.pendingOutgoingTransfers[transferId] = pending
+
+            let payload: [String: Any] = [
+                "type": "CLIPBOARD_FILE_ANNOUNCE",
+                "transfer_id": transferId.uuidString,
+                "file_name": url.lastPathComponent,
+                "mime_type": mimeType,
+                "size_bytes": sizeBytes,
+                "sha256": sha256,
+                "timestamp": ISO8601DateFormatter().string(from: Date())
+            ]
+
+            guard let metaData = try? JSONSerialization.data(withJSONObject: payload),
+                  let jsonStr = String(data: metaData, encoding: .utf8) else {
+                return
+            }
+            let lineData = Data((jsonStr + "\n").utf8)
+
+            for peer in connectedPeers {
+                peer.connection.send(content: lineData, completion: .idempotent)
+                #if DEBUG
+                print("[FileStreamingManager] Sent CLIPBOARD_FILE_ANNOUNCE for \(url.lastPathComponent) to \(peer.name)")
+                #endif
+            }
+        }
+    }
 
     /// Send a list of file URLs to the connected Android device.
     public func sendFiles(urls: [URL], to peer: ConnectedPeer) {

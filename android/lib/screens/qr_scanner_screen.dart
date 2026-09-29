@@ -111,7 +111,6 @@ class _QRScannerScreenState extends State<QRScannerScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
-        final theme = Theme.of(ctx);
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),

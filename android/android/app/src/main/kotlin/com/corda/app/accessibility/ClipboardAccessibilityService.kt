@@ -15,12 +15,18 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.corda.app.actions.TransparentClipboardReaderActivity
 import com.corda.app.events.ClipboardCopiedEvent
 import com.corda.app.events.CordaEventBus
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.corda.app.services.CordaForegroundService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.Collections
 
@@ -29,6 +35,7 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
     companion object {
         private const val TAG = "CordaClipboardAcc"
         private var lastProcessedText: String? = null
+        private var lastProcessedFileHash: String? = null
         private var lastProcessedTime: Long = 0L
         private const val DEDUPLICATION_WINDOW_MS = 800L
 
@@ -53,6 +60,120 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
             val md = MessageDigest.getInstance("SHA-256")
             val digest = md.digest(text.toByteArray(Charsets.UTF_8))
             return digest.joinToString("") { "%02x".format(it) }
+        }
+
+        fun computeFileSha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            FileInputStream(file).use { fis ->
+                val buf = ByteArray(65536)
+                var n: Int
+                while (fis.read(buf).also { n = it } != -1) {
+                    digest.update(buf, 0, n)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        fun triggerHapticFeedback(context: Context) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    vm?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                } else {
+                    @Suppress("DEPRECATION")
+                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(25)
+                }
+            } catch (_: Exception) {}
+        }
+
+        fun processClipboardUri(context: Context, uri: Uri, description: ClipDescription?, sourcePackage: String): Boolean {
+            try {
+                val mimeType = context.contentResolver.getType(uri)
+                    ?: (if (description != null && description.mimeTypeCount > 0) description.getMimeType(0) else null)
+                    ?: "application/octet-stream"
+
+                var fileName = "clipboard_file"
+                var fileSize = -1L
+
+                try {
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIdx != -1) {
+                                val n = cursor.getString(nameIdx)
+                                if (!n.isNullOrEmpty()) fileName = n
+                            }
+                            val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                            if (sizeIdx != -1) {
+                                fileSize = cursor.getLong(sizeIdx)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+
+                // Cap at 50MB
+                if (fileSize > 52428800L) {
+                    Log.w(TAG, "File di clipboard melebihi 50MB ($fileSize bytes). Dilewati.")
+                    return false
+                }
+
+                val tempDir = File(context.cacheDir, "clipboard_out").apply { mkdirs() }
+                val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "bin"
+                val safeFileName = if (fileName.contains(".")) fileName else "$fileName.$ext"
+                val tempFile = File(tempDir, safeFileName)
+
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: return false
+
+                val actualSize = tempFile.length()
+                if (actualSize <= 0 || actualSize > 52428800L) {
+                    tempFile.delete()
+                    return false
+                }
+
+                val sha256 = computeFileSha256(tempFile).lowercase()
+                if (recentRemoteHashes.contains(sha256)) {
+                    Log.d(TAG, "File clipboard berasal dari remote sync. Mengabaikan echo.")
+                    recentRemoteHashes.remove(sha256)
+                    tempFile.delete()
+                    return false
+                }
+
+                val currentTime = System.currentTimeMillis()
+                if (sha256 == lastProcessedFileHash && (currentTime - lastProcessedTime) < DEDUPLICATION_WINDOW_MS) {
+                    tempFile.delete()
+                    return false
+                }
+
+                lastProcessedFileHash = sha256
+                lastProcessedTime = currentTime
+
+                triggerHapticFeedback(context)
+
+                val isImage = mimeType.startsWith("image/")
+                val label = if (isImage) "🖼️ $safeFileName" else "📁 $safeFileName"
+
+                CordaEventBus.postClipboardEvent(
+                    ClipboardCopiedEvent(
+                        text = label,
+                        timestamp = System.currentTimeMillis(),
+                        isSensitive = false,
+                        sourcePackage = sourcePackage
+                    )
+                )
+
+                CordaForegroundService.instance?.socketClient?.sendClipboardFile(tempFile, mimeType, sha256)
+                Log.i(TAG, "File/Gambar clipboard Android ($safeFileName, $actualSize bytes) berhasil dikirim ke Mac!")
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal memproses URI clipboard", e)
+                return false
+            }
         }
     }
 
@@ -239,18 +360,24 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
             if (!manager.hasPrimaryClip()) return false
 
             val description = manager.primaryClipDescription ?: return false
+            val clipData = manager.primaryClip ?: return false
+            if (clipData.itemCount <= 0) return false
 
+            val firstItem = clipData.getItemAt(0)
+
+            // 1. Check for File / Image URI clip (<= 50MB)
+            val uri = firstItem?.uri
+            if (uri != null) {
+                return processClipboardUri(this, uri, description, sourcePackage)
+            }
+
+            // 2. Universal text/plain & HTML sync
             val isText = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
                     description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
 
             if (!isText) return false
 
-            // Universal sync: Capture all clipboard content including credentials and passwords without exception
-
-            val clipData = manager.primaryClip ?: return false
-            if (clipData.itemCount <= 0) return false
-
-            val textItem = clipData.getItemAt(0)?.coerceToText(this)?.toString()
+            val textItem = firstItem?.coerceToText(this)?.toString()
             if (textItem.isNullOrEmpty()) return false
 
             return emitClipboardText(textItem, sourcePackage)

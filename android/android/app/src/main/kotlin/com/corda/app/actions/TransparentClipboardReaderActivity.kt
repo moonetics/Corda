@@ -77,16 +77,21 @@ class TransparentClipboardReaderActivity : Activity() {
             if (!manager.hasPrimaryClip()) return
 
             val description = manager.primaryClipDescription ?: return
+            val clipData = manager.primaryClip ?: return
+            if (clipData.itemCount <= 0) return
+
+            val firstItem = clipData.getItemAt(0)
+            val uri = firstItem?.uri
+            if (uri != null) {
+                ClipboardAccessibilityService.processClipboardUri(this, uri, description, "android.system.clipboard")
+                return
+            }
+
             val isText = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
                     description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
             if (!isText) return
 
-            // Universal sync: Capture all clipboard items including credentials and passwords
-
-            val clipData = manager.primaryClip ?: return
-            if (clipData.itemCount <= 0) return
-
-            val textItem = clipData.getItemAt(0)?.coerceToText(this)?.toString()
+            val textItem = firstItem?.coerceToText(this)?.toString()
             if (textItem.isNullOrEmpty()) return
 
             val textHash = ClipboardAccessibilityService.computeSha256(textItem).lowercase()

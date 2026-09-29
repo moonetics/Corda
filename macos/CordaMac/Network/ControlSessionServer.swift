@@ -223,6 +223,8 @@ public final class ControlSessionServer: ObservableObject {
             handleClipboardPayload(jsonObject, from: connection, peer: peer)
         case "FILE_METADATA_HEADER":
             FileStreamingManager.shared.prepareIncomingTransfer(metadata: jsonObject)
+        case "CLIPBOARD_FILE_ANNOUNCE":
+            FileStreamingManager.shared.prepareIncomingClipboardTransfer(metadata: jsonObject)
         case "HEARTBEAT_PING":
             handleHeartbeatPing(jsonObject, from: connection, peer: peer)
         default:

@@ -32,6 +32,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             #endif
             ControlSessionServer.shared.broadcastClipboard(text: text, hash: hash)
         }
+        MacClipboardObserver.shared.onClipboardFileChanged = { url, mimeType, sizeBytes, sha256 in
+            #if DEBUG
+            print("[Corda Clipboard File Event] User copied file: \(url.lastPathComponent) (\(sizeBytes) bytes, \(mimeType))")
+            #endif
+            FileStreamingManager.shared.sendClipboardFile(url: url, mimeType: mimeType, sizeBytes: sizeBytes, sha256: sha256)
+        }
 
         // Start listening for high-speed file streams on Port 54322
         FileStreamingManager.shared.startListening()
