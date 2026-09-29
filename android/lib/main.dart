@@ -56,59 +56,42 @@ class _CordaAppBootstrapState extends State<CordaAppBootstrap> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: CordaTheme.obsidianBg,
+        backgroundColor: CordaTheme.canvasBg,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
+              Image.asset(
+                'assets/images/logo_corda.png',
                 width: 72,
                 height: 72,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: CordaTheme.obsidianGlass,
-                  border: Border.all(color: CordaTheme.obsidianGlassBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: CordaTheme.aquaPrimary.withValues(alpha: 0.35),
-                      blurRadius: 28,
-                    ),
-                  ],
-                ),
-                child: Image.asset(
-                  'assets/images/corda_logo_icon.png',
-                  fit: BoxFit.contain,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Corda',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 24),
-              ShaderMask(
-                shaderCallback: (bounds) => CordaTheme.aquaGradient.createShader(bounds),
-                child: const Text(
-                  'CORDA',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 4,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Continuity Bridge for macOS & Android',
+              const SizedBox(height: 6),
+              const Text(
+                'Mac & Android Continuity Bridge',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: CordaTheme.textSecondary,
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 32),
               const SizedBox(
-                width: 24,
-                height: 24,
+                width: 22,
+                height: 22,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: CordaTheme.aquaCyan,
+                  strokeWidth: 2.2,
+                  color: CordaTheme.accentBlue,
                 ),
               ),
             ],

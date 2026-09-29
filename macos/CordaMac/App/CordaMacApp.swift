@@ -63,7 +63,7 @@ struct MenuBarStatusIconView: View {
 
             if isConnected {
                 Circle()
-                    .fill(Color(red: 0.0, green: 0.82, blue: 0.83))
+                    .fill(Color(red: 0.20, green: 0.78, blue: 0.35))
                     .frame(width: 4, height: 4)
             }
         }
@@ -95,8 +95,8 @@ struct MenuBarStatusIconView: View {
         }
         let paths = [
             "macos/CordaMac/Resources/menubar_icon.png",
-            "assets/corda_logo_icon.png",
-            "../assets/corda_logo_icon.png"
+            "assets/logo-corda.png",
+            "../assets/logo-corda.png"
         ]
         for path in paths {
             if FileManager.default.fileExists(atPath: path),

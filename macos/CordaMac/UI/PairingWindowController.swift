@@ -81,13 +81,13 @@ struct PairingModalView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
 
                 VStack(spacing: 2) {
                     Text("Pair with Android")
                         .font(.system(size: 15, weight: .bold))
-                    Text("Scan this QR Code using Corda on your phone")
+                        .foregroundStyle(.primary)
+                    Text("Scan this QR code using Corda on your phone")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -122,16 +122,7 @@ struct PairingModalView: View {
 
                 Text(formattedPin(pin))
                     .font(.system(size: 24, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.04, green: 0.52, blue: 1.0),
-                                Color(red: 0.0, green: 0.82, blue: 0.83)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
             }
             .padding(.vertical, 2)
 
@@ -228,23 +219,26 @@ struct PairingModalView: View {
     }
 
     private func loadLogoImage() -> NSImage? {
-        #if SWIFT_PACKAGE
-        if let url = Bundle.module.url(forResource: "corda_logo_icon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
-        }
-        #endif
-        if let img = NSImage(named: "corda_logo_icon") {
-            return img
-        }
-        if let url = Bundle.main.url(forResource: "corda_logo_icon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
+        let candidateNames = ["logo_corda", "corda_logo_icon"]
+        for name in candidateNames {
+            if let mainUrl = Bundle.main.url(forResource: name, withExtension: "png"),
+               let img = NSImage(contentsOf: mainUrl) {
+                return img
+            }
+            #if SWIFT_PACKAGE
+            if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+               let img = NSImage(contentsOf: url) {
+                return img
+            }
+            #endif
+            if let img = NSImage(named: name) {
+                return img
+            }
         }
         let fallbackPaths = [
-            "macos/CordaMac/Resources/corda_logo_icon.png",
-            "assets/corda_logo_icon.png",
-            "../assets/corda_logo_icon.png"
+            "macos/CordaMac/Resources/logo_corda.png",
+            "assets/logo-corda.png",
+            "macos/CordaMac/Resources/corda_logo_icon.png"
         ]
         for path in fallbackPaths {
             if FileManager.default.fileExists(atPath: path),

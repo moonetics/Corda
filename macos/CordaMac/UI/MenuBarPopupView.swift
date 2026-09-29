@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// The primary Sonoma Luminous Aqua popover displayed when clicking Corda in the macOS Menu Bar.
+/// Clean & Minimalist macOS Sonoma popover displayed when clicking Corda in the Menu Bar.
+/// Designed with solid neutral surfaces, zero glassmorphism, high contrast, and accessible hierarchy.
 public struct MenuBarPopupView: View {
     @ObservedObject private var discovery = BonjourDiscoveryManager.shared
     @ObservedObject private var clipboard = MacClipboardObserver.shared
@@ -16,205 +17,207 @@ public struct MenuBarPopupView: View {
     public init() {}
 
     public var body: some View {
-        ZStack {
-            VisualEffectView(material: .popover, blendingMode: .behindWindow, state: .active)
+        VStack(alignment: .leading, spacing: 14) {
+            // Header: Logo, Title, Subtitle, and Quick Actions
+            HStack(spacing: 10) {
+                if let logoImg = loadLogoImage() {
+                    Image(nsImage: logoImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 30, height: 30)
+                } else {
+                    Image(systemName: "link.circle.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+                }
 
-            VStack(alignment: .leading, spacing: 14) {
-                // Header
-                HStack(spacing: 10) {
-                    if let logoImg = loadLogoImage() {
-                        Image(nsImage: logoImg)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 28, height: 28)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    } else {
-                        Image(systemName: "link.circle.fill")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.04, green: 0.52, blue: 1.0),   // Apple Blue #0A84FF
-                                        Color(red: 0.0, green: 0.82, blue: 0.83)    // Sonoma Cyan #00D2D3
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Corda")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.primary)
+
+                    Text("Mac & Android Continuity")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingSettings.toggle()
+                        }
+                    }) {
+                        Image(systemName: showingSettings ? "xmark.circle.fill" : "gearshape.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(showingSettings ? .secondary : Color(red: 0.04, green: 0.52, blue: 1.0))
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .help(showingSettings ? "Close Settings" : "Settings & Storage")
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Corda")
-                            .font(.system(size: 15, weight: .bold))
-                        Text("The invisible cord between your Mac and Android")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    Button(action: {
+                        PairingWindowController.shared.showPairingWindow()
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .help("Pair New Device")
+                }
+            }
 
-                    Spacer()
+            Divider()
 
-                    HStack(spacing: 8) {
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                showingSettings.toggle()
+            if showingSettings {
+                MacSettingsView(onClose: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showingSettings = false
+                    }
+                })
+            } else {
+                // Connected & Nearby Devices Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("CONNECTED DEVICES")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .tracking(1.1)
+
+                    if server.connectedPeers.isEmpty && discovery.discoveredDevices.isEmpty {
+                        HStack(spacing: 10) {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Searching for Android device...")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Text("Open Corda on your phone to connect")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
                             }
-                        }) {
-                            Image(systemName: showingSettings ? "xmark.circle.fill" : "gearshape.fill")
-                                .font(.system(size: 15))
-                                .foregroundStyle(showingSettings ? .secondary : Color(red: 0.04, green: 0.52, blue: 1.0))
+                            Spacer()
                         }
-                        .buttonStyle(.plain)
-                        .help(showingSettings ? "Tutup Pengaturan" : "Pengaturan Folder & Sistem")
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.primary.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                        )
+                    } else {
+                        ForEach(server.connectedPeers) { peer in
+                            ConnectedPeerRowView(peer: peer)
+                        }
+                        ForEach(discovery.discoveredDevices.filter { dev in
+                            !server.connectedPeers.contains { $0.name == dev.name || $0.fingerprint == dev.fingerprint }
+                        }) { device in
+                            DeviceRowView(device: device)
+                        }
+                    }
 
-                        Button(action: {
-                            PairingWindowController.shared.showPairingWindow()
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+                    if discovery.isPossibleAPIsolation && discovery.discoveredDevices.isEmpty && server.connectedPeers.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.orange)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Possible Wi-Fi AP Isolation")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color.orange)
+                                Text("This Wi-Fi network may prevent peer-to-peer connections.")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
                         }
-                        .buttonStyle(.plain)
-                        .help("Pair New Device")
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.orange.opacity(0.08))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(Color.orange.opacity(0.25), lineWidth: 1)
+                                )
+                        )
                     }
                 }
 
-                Divider()
+                // Active File Transfer Progress Card
+                if let transfer = fileStreaming.activeTransfer {
+                    ActiveTransferCardView(transfer: transfer)
+                }
 
-                if showingSettings {
-                    MacSettingsView(onClose: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            showingSettings = false
-                        }
-                    })
-                } else {
-                    // Connected & Nearby Devices Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("DEVICES ON LOCAL WI-FI")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .tracking(1.2)
+                // Drop or Click to Send Files (Solid Minimalist Dropzone)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("DROP OR CLICK TO SEND FILES")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .tracking(1.1)
 
-                        if discovery.discoveredDevices.isEmpty && server.connectedPeers.isEmpty {
-                            HStack(spacing: 10) {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.secondary)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Searching on local network...")
-                                        .font(.system(size: 11, weight: .medium))
-                                    Text("Make sure Corda is open on your Android phone")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                Spacer()
-                            }
-                            .padding(10)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(
+                                isDropTargeted
+                                    ? Color(red: 0.04, green: 0.52, blue: 1.0)
+                                    : Color.primary.opacity(0.14),
+                                style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: [5, 4])
+                            )
                             .background(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.primary.opacity(0.03))
+                                    .fill(isDropTargeted ? Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.08) : Color.primary.opacity(0.03))
                             )
-                        } else {
-                            ForEach(server.connectedPeers) { peer in
-                                ConnectedPeerRowView(peer: peer)
-                            }
-                            ForEach(discovery.discoveredDevices.filter { dev in
-                                !server.connectedPeers.contains { $0.name == dev.name || $0.fingerprint == dev.fingerprint }
-                            }) { device in
-                                DeviceRowView(device: device)
+
+                        VStack(spacing: 4) {
+                            Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "arrow.up.doc.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+
+                            Text(droppedFilesSummary ?? (isDropTargeted ? "Release to send files" : "Drag files or click to send"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(droppedFilesSummary != nil ? Color.primary : Color.secondary)
+
+                            if droppedFilesSummary == nil {
+                                Text("Supports photos, videos & documents")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.secondary)
                             }
                         }
-
-                        if discovery.isPossibleAPIsolation && discovery.discoveredDevices.isEmpty && server.connectedPeers.isEmpty {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color(red: 1.0, green: 0.62, blue: 0.04))
-
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Kemungkinan Client/AP Isolation Aktif")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(Color(red: 1.0, green: 0.62, blue: 0.04))
-                                    Text("Wi-Fi publik ini mungkin memblokir komunikasi langsung antar perangkat.")
-                                        .font(.system(size: 8))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color(red: 1.0, green: 0.62, blue: 0.04).opacity(0.08))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(Color(red: 1.0, green: 0.62, blue: 0.04).opacity(0.3), lineWidth: 1)
-                            )
-                        }
+                        .padding(.vertical, 14)
                     }
-
-                    // Active File Transfer Progress Card
-                    if let transfer = fileStreaming.activeTransfer {
-                        ActiveTransferCardView(transfer: transfer)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectAndSendFiles()
                     }
+                    .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                        handleDroppedItems(providers)
+                        return true
+                    }
+                }
 
-                    // File DropZone Section (Clickable + Drag & Drop)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("DROP OR CLICK TO SEND FILES")
+                // Live Clipboard Status Card
+                if let text = clipboard.lastCopiedText {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("RECENT CLIPBOARD")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.secondary)
-                            .tracking(1.2)
+                            .tracking(1.1)
 
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(
-                                    isDropTargeted
-                                        ? Color(red: 0.0, green: 0.82, blue: 0.83)
-                                        : Color.primary.opacity(0.12),
-                                    style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: [6, 4])
-                                )
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(isDropTargeted ? Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.08) : Color.primary.opacity(0.02))
-                                )
-
-                            VStack(spacing: 6) {
-                                Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "arrow.up.doc.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(
-                                        isDropTargeted
-                                            ? Color(red: 0.0, green: 0.82, blue: 0.83)
-                                            : Color(red: 0.04, green: 0.52, blue: 1.0)
-                                    )
-
-                                Text(droppedFilesSummary ?? (isDropTargeted ? "Drop files now" : "Drag files or click to send"))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(droppedFilesSummary != nil ? .primary : .secondary)
-
-                                if droppedFilesSummary == nil {
-                                    Text("Supports multiple files & folders")
-                                        .font(.system(size: 8))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .padding(.vertical, 14)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectAndSendFiles()
-                        }
-                        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                            handleDroppedItems(providers)
-                            return true
-                        }
-                    }
-
-                    // Live Clipboard Status Card
-                    if let text = clipboard.lastCopiedText {
                         HStack(spacing: 8) {
-                            Image(systemName: "doc.on.clipboard")
+                            Image(systemName: "doc.on.clipboard.fill")
                                 .font(.system(size: 11))
                                 .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
 
@@ -222,59 +225,65 @@ public struct MenuBarPopupView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
+                                .foregroundStyle(.primary)
 
                             Spacer()
 
                             Text("Synced")
-                                .font(.system(size: 8, weight: .bold))
-                                .padding(.horizontal, 4)
+                                .font(.system(size: 8, weight: .semibold))
+                                .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.green.opacity(0.15))
-                                .foregroundStyle(.green)
+                                .background(Color(red: 0.2, green: 0.82, blue: 0.35).opacity(0.15))
+                                .foregroundStyle(Color(red: 0.2, green: 0.82, blue: 0.35))
                                 .clipShape(Capsule())
                         }
-                        .padding(6)
+                        .padding(8)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.primary.opacity(0.03))
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.primary.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
                         )
                     }
+                }
 
-                    Divider()
+                Divider()
 
-                    // Footer
-                    HStack {
-                        Button(action: {
-                            PairingWindowController.shared.showPairingWindow()
-                        }) {
-                            Label("Pair Device", systemImage: "qrcode")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-
-                        Spacer()
-
-                        Button(action: {
-                            NSApp.terminate(nil)
-                        }) {
-                            Text("Quit Corda")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.red.opacity(0.85))
-                        }
-                        .buttonStyle(.plain)
+                // Footer Actions
+                HStack {
+                    Button(action: {
+                        PairingWindowController.shared.showPairingWindow()
+                    }) {
+                        Label("Pair Device", systemImage: "qrcode")
+                            .font(.system(size: 11, weight: .medium))
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Spacer()
+
+                    Button(action: {
+                        NSApp.terminate(nil)
+                    }) {
+                        Text("Quit Corda")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(16)
         }
+        .padding(16)
+        .background(Color(nsColor: .windowBackgroundColor))
         .frame(width: 320)
     }
 
     private func handleDroppedItems(_ providers: [NSItemProvider]) {
         guard let peer = server.connectedPeers.first(where: { $0.isTrusted }) ?? server.connectedPeers.first else {
             DispatchQueue.main.async {
-                self.droppedFilesSummary = "Hubungkan perangkat Android terlebih dahulu."
+                self.droppedFilesSummary = "Connect Android device first."
             }
             return
         }
@@ -296,7 +305,7 @@ public struct MenuBarPopupView: View {
 
         group.notify(queue: .main) {
             if !urls.isEmpty {
-                self.droppedFilesSummary = "Mengirim \(urls.count) file ke \(peer.name)..."
+                self.droppedFilesSummary = "Sending \(urls.count) item(s) to \(peer.name)..."
                 FileStreamingManager.shared.sendFiles(urls: urls, to: peer)
             }
         }
@@ -305,7 +314,7 @@ public struct MenuBarPopupView: View {
     private func selectAndSendFiles() {
         guard let peer = server.connectedPeers.first(where: { $0.isTrusted }) ?? server.connectedPeers.first else {
             DispatchQueue.main.async {
-                self.droppedFilesSummary = "Hubungkan perangkat Android terlebih dahulu."
+                self.droppedFilesSummary = "Connect Android device first."
             }
             return
         }
@@ -314,36 +323,39 @@ public struct MenuBarPopupView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
-        panel.prompt = "Kirim ke \(peer.name)"
-        panel.message = "Pilih berkas atau folder untuk dikirim ke Android"
+        panel.prompt = "Send to \(peer.name)"
+        panel.message = "Choose files or folders to send to Android"
 
         if panel.runModal() == .OK {
             let urls = panel.urls
             if !urls.isEmpty {
-                self.droppedFilesSummary = "Mengirim \(urls.count) berkas ke \(peer.name)..."
+                self.droppedFilesSummary = "Sending \(urls.count) item(s) to \(peer.name)..."
                 FileStreamingManager.shared.sendFiles(urls: urls, to: peer)
             }
         }
     }
 
     private func loadLogoImage() -> NSImage? {
-        #if SWIFT_PACKAGE
-        if let url = Bundle.module.url(forResource: "corda_logo_icon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
-        }
-        #endif
-        if let img = NSImage(named: "corda_logo_icon") {
-            return img
-        }
-        if let url = Bundle.main.url(forResource: "corda_logo_icon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
+        let candidateNames = ["logo_corda", "corda_logo_icon"]
+        for name in candidateNames {
+            if let mainUrl = Bundle.main.url(forResource: name, withExtension: "png"),
+               let img = NSImage(contentsOf: mainUrl) {
+                return img
+            }
+            #if SWIFT_PACKAGE
+            if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+               let img = NSImage(contentsOf: url) {
+                return img
+            }
+            #endif
+            if let img = NSImage(named: name) {
+                return img
+            }
         }
         let fallbackPaths = [
-            "macos/CordaMac/Resources/corda_logo_icon.png",
-            "assets/corda_logo_icon.png",
-            "../assets/corda_logo_icon.png"
+            "macos/CordaMac/Resources/logo_corda.png",
+            "assets/logo-corda.png",
+            "macos/CordaMac/Resources/corda_logo_icon.png"
         ]
         for path in fallbackPaths {
             if FileManager.default.fileExists(atPath: path),
@@ -355,8 +367,7 @@ public struct MenuBarPopupView: View {
     }
 }
 
-
-/// Sonoma Aqua styled live transfer card.
+/// Clean Minimalist Transfer Card
 struct ActiveTransferCardView: View {
     let transfer: ActiveTransferProgress
 
@@ -365,16 +376,7 @@ struct ActiveTransferCardView: View {
             HStack(spacing: 8) {
                 Image(systemName: transfer.direction == "outgoing" ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
                     .font(.system(size: 16))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.04, green: 0.52, blue: 1.0),
-                                Color(red: 0.0, green: 0.82, blue: 0.83)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(transfer.currentFileName)
@@ -382,7 +384,7 @@ struct ActiveTransferCardView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    Text(transfer.isCompleted ? "Transfer Selesai ✨" : "Berkas \(transfer.currentFileIndex + 1) dari \(transfer.totalFiles) • \(String(format: "%.1f", transfer.speedMBs)) MB/s")
+                    Text(transfer.isCompleted ? "Transfer Complete ✨" : "File \(transfer.currentFileIndex + 1) of \(transfer.totalFiles) • \(String(format: "%.1f", transfer.speedMBs)) MB/s")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
@@ -394,49 +396,41 @@ struct ActiveTransferCardView: View {
                     .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
             }
 
-            // Progress bar
+            // Clean Solid Progress Bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.primary.opacity(0.08))
-                        .frame(height: 5)
+                        .frame(height: 4)
 
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.04, green: 0.52, blue: 1.0),
-                                    Color(red: 0.0, green: 0.82, blue: 0.83)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(transfer.progressFraction))), height: 5)
+                        .fill(Color(red: 0.04, green: 0.52, blue: 1.0))
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(transfer.progressFraction))), height: 4)
                         .animation(.linear(duration: 0.2), value: transfer.progressFraction)
                 }
             }
-            .frame(height: 5)
+            .frame(height: 4)
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color(red: 0.0, green: 0.82, blue: 0.83).opacity(0.3), lineWidth: 1)
+                .fill(Color.primary.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
         )
     }
 }
 
+/// Clean Discovered Device Row
 struct DeviceRowView: View {
     let device: DiscoveredDevice
 
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(device.isTrusted ? Color(red: 0.2, green: 0.82, blue: 0.35) : Color(red: 1.0, green: 0.62, blue: 0.04))
+                .fill(device.isTrusted ? Color(red: 0.2, green: 0.82, blue: 0.35) : Color.orange)
                 .frame(width: 8, height: 8)
 
             Image(systemName: "phone.fill")
@@ -446,7 +440,7 @@ struct DeviceRowView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(device.name)
                     .font(.system(size: 12, weight: .medium))
-                Text(device.isTrusted ? "Trusted & Connected" : "New Device • Tap to Pair")
+                Text(device.isTrusted ? "Trusted • Tap to Connect" : "Discovered • Tap to Pair")
                     .font(.system(size: 9))
                     .foregroundStyle(device.isTrusted ? Color.secondary : Color.orange)
             }
@@ -465,18 +459,23 @@ struct DeviceRowView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
+                .fill(Color.primary.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                )
         )
     }
 }
 
+/// Clean Connected Peer Row
 struct ConnectedPeerRowView: View {
     @ObservedObject var peer: ConnectedPeer
 
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(peer.isTrusted ? Color(red: 0.2, green: 0.82, blue: 0.35) : Color(red: 1.0, green: 0.62, blue: 0.04))
+                .fill(peer.isTrusted ? Color(red: 0.2, green: 0.82, blue: 0.35) : Color.orange)
                 .frame(width: 8, height: 8)
 
             Image(systemName: "phone.fill")
@@ -486,7 +485,8 @@ struct ConnectedPeerRowView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(peer.name)
                     .font(.system(size: 12, weight: .semibold))
-                Text(peer.isTrusted ? "Connected • Clipboard Sync Active ⚡" : "Connecting...")
+                    .foregroundStyle(.primary)
+                Text(peer.isTrusted ? "Connected • Clipboard Sync Active" : "Connecting...")
                     .font(.system(size: 9))
                     .foregroundStyle(peer.isTrusted ? Color.secondary : Color.orange)
             }
@@ -494,7 +494,7 @@ struct ConnectedPeerRowView: View {
             Spacer()
 
             if peer.isTrusted {
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(Color(red: 0.2, green: 0.82, blue: 0.35))
             }
@@ -502,12 +502,16 @@ struct ConnectedPeerRowView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.06))
+                .fill(Color.primary.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
         )
     }
 }
 
-/// Sonoma Liquid Glass Settings View for configuring custom download folders and auto-accept options.
+/// Clean Sonoma Settings View for download folder & auto-accept
 struct MacSettingsView: View {
     @ObservedObject private var fileStreaming = FileStreamingManager.shared
     var onClose: () -> Void
@@ -517,7 +521,7 @@ struct MacSettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
             HStack {
-                Label("Pengaturan & Folder", systemImage: "gearshape.fill")
+                Label("Settings & Storage", systemImage: "gearshape.fill")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
                 Spacer()
@@ -533,29 +537,21 @@ struct MacSettingsView: View {
 
             // Download Directory Card
             VStack(alignment: .leading, spacing: 8) {
-                Text("FOLDER PENERIMAAN BERKAS")
+                Text("DOWNLOAD LOCATION")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .tracking(1.2)
+                    .tracking(1.1)
 
                 HStack(spacing: 8) {
                     Image(systemName: "folder.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.04, green: 0.52, blue: 1.0),
-                                    Color(red: 0.0, green: 0.82, blue: 0.83)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
 
                     Text(fileStreaming.defaultDownloadsFolder.path)
                         .font(.system(size: 10, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .foregroundStyle(.primary)
 
                     Spacer()
                 }
@@ -563,18 +559,22 @@ struct MacSettingsView: View {
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.primary.opacity(0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
                 )
 
                 HStack(spacing: 6) {
                     Button(action: selectNewFolder) {
-                        Label("Ubah Folder...", systemImage: "folder.badge.gearshape")
+                        Label("Change...", systemImage: "folder.badge.gearshape")
                             .font(.system(size: 10))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
                     Button(action: openInFinder) {
-                        Label("Buka di Finder", systemImage: "arrow.up.forward.square")
+                        Label("Show in Finder", systemImage: "arrow.up.forward.square")
                             .font(.system(size: 10))
                     }
                     .buttonStyle(.bordered)
@@ -596,9 +596,9 @@ struct MacSettingsView: View {
             // Auto-Accept Toggle
             Toggle(isOn: $autoAcceptFiles) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-Accept Berkas")
+                    Text("Auto-Accept Files")
                         .font(.system(size: 11, weight: .medium))
-                    Text("Terima berkas otomatis dari Android terpercaya ke folder unduhan")
+                    Text("Automatically save received files from paired Android")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
@@ -610,25 +610,25 @@ struct MacSettingsView: View {
 
             // Protocol & Security Info
             VStack(alignment: .leading, spacing: 6) {
-                Text("KEAMANAN & KONEKSI")
+                Text("SECURITY & PRIVACY")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .tracking(1.2)
+                    .tracking(1.1)
 
                 HStack(spacing: 6) {
                     Image(systemName: "lock.shield.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Color(red: 0.2, green: 0.82, blue: 0.35))
-                    Text("TLS 1.3 End-to-End Encrypted (Ed25519)")
+                    Text("Direct Private Connection • End-to-End Encrypted")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
 
                 HStack(spacing: 6) {
-                    Image(systemName: "network")
+                    Image(systemName: "wifi")
                         .font(.system(size: 11))
                         .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
-                    Text("Port 54321 (Control) • Port 54322 (Stream 256KB)")
+                    Text("Local Wi-Fi Network • Zero Cloud Relay")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
@@ -645,8 +645,8 @@ struct MacSettingsView: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "Pilih Folder"
-        panel.message = "Pilih folder untuk menerima berkas transfer dari Android"
+        panel.prompt = "Select Folder"
+        panel.message = "Choose destination folder for files received from Android"
 
         if panel.runModal() == .OK, let selectedURL = panel.url {
             fileStreaming.setCustomDownloadsFolder(selectedURL)
@@ -661,5 +661,3 @@ struct MacSettingsView: View {
         fileStreaming.resetDownloadsFolder()
     }
 }
-
-

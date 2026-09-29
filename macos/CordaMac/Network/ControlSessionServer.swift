@@ -252,7 +252,7 @@ public final class ControlSessionServer: ObservableObject {
             #if DEBUG
             print("[ControlServer] PIN mismatch. Expected: \(String(describing: activePin)), Received: \(pin)")
             #endif
-            sendPairResponse(to: connection, status: "PIN_MISMATCH", reason: "Kode PIN verifikasi tidak cocok.")
+            sendPairResponse(to: connection, status: "PIN_MISMATCH", reason: "Verification PIN does not match.")
             return
         }
 

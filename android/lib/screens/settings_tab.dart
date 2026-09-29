@@ -49,85 +49,46 @@ class _SettingsTabState extends State<SettingsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: CordaTheme.canvasBg,
+      appBar: AppBar(
+        backgroundColor: CordaTheme.canvasBg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Settings',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+      ),
       body: SafeArea(
-        bottom: false,
         child: RefreshIndicator(
           onRefresh: _refreshStatus,
-          color: CordaTheme.aquaCyan,
-          backgroundColor: CordaTheme.obsidianGlass,
+          color: CordaTheme.accentBlue,
+          backgroundColor: CordaTheme.surfaceCard,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
             children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: CordaTheme.aquaGradient,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: CordaTheme.aquaCyan.withValues(alpha: 0.3),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.gear_alt_fill,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Pengaturan',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        'Corda System & Preferences',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // SECTION 1: Berkas & Penyimpanan
-              _buildSectionTitle('BERKAS & PENYIMPANAN'),
-              const SizedBox(height: 10),
-              LiquidGlassCard(
-                padding: const EdgeInsets.all(18),
+              // SECTION 1: Files & Storage
+              _buildSectionTitle('FILES & STORAGE'),
+              const SizedBox(height: 8),
+              SonomaCard(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
-                            color: CordaTheme.aquaPrimary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
+                            color: CordaTheme.surfaceSubtle,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: CordaTheme.borderSubtle),
                           ),
-                          child: const Icon(
-                            CupertinoIcons.folder_fill,
-                            color: CordaTheme.aquaCyan,
-                            size: 20,
-                          ),
+                          child: const Icon(CupertinoIcons.folder_fill, color: CordaTheme.accentBlue, size: 18),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -135,67 +96,50 @@ class _SettingsTabState extends State<SettingsTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Lokasi Unduhan Berkas',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                  color: Colors.white,
-                                ),
+                                'Download Destination',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Berkas dari Mac disimpan ke folder ini',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
+                                'Incoming files from Mac will be saved here',
+                                style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: CordaTheme.mintGreen.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: CordaTheme.mintGreen.withValues(alpha: 0.3),
-                            ),
+                            color: const Color(0xFF142E1B),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF23552D)),
                           ),
                           child: const Text(
-                            'Aktif',
-                            style: TextStyle(
-                              color: CordaTheme.mintGreen,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            'Active',
+                            style: TextStyle(color: CordaTheme.mintGreen, fontSize: 11, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        color: CordaTheme.surfaceSubtle,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: CordaTheme.borderSubtle),
                       ),
                       child: const Row(
                         children: [
-                          Icon(
-                            CupertinoIcons.archivebox_fill,
-                            size: 16,
-                            color: Colors.white38,
-                          ),
+                          Icon(CupertinoIcons.archivebox, size: 14, color: CordaTheme.textMuted),
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Download/Corda',
                               style: TextStyle(
                                 fontFamily: 'monospace',
-                                fontSize: 13,
-                                color: CordaTheme.aquaCyan,
+                                fontSize: 12,
+                                color: Colors.white,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -203,9 +147,9 @@ class _SettingsTabState extends State<SettingsTab> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const Divider(color: Colors.white10, height: 1),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -214,27 +158,20 @@ class _SettingsTabState extends State<SettingsTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Terima Berkas Otomatis',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                  color: Colors.white,
-                                ),
+                                'Auto-Accept Transfers',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Stream langsung dari Mac terpercaya tanpa konfirmasi',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
+                                'Stream directly from trusted Macs without prompting',
+                                style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         CupertinoSwitch(
                           value: _autoAccept,
-                          activeTrackColor: CordaTheme.aquaPrimary,
+                          activeTrackColor: CordaTheme.accentBlue,
                           onChanged: (val) {
                             setState(() => _autoAccept = val);
                           },
@@ -245,13 +182,13 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              // SECTION 2: Preferensi Sinkronisasi & Umpan Balik
-              _buildSectionTitle('PREFERENSI SINKRONISASI'),
-              const SizedBox(height: 10),
-              LiquidGlassCard(
-                padding: const EdgeInsets.all(18),
+              // SECTION 2: Continuity & Sync Preferences
+              _buildSectionTitle('CONTINUITY PREFERENCES'),
+              const SizedBox(height: 8),
+              SonomaCard(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
                     Row(
@@ -263,48 +200,39 @@ class _SettingsTabState extends State<SettingsTab> {
                             children: [
                               Text(
                                 'Haptic Feedback',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                  color: Colors.white,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Getaran mikro halus saat teks/berkas tersinkron',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
+                                'Subtle micro-vibration when items are synchronized',
+                                style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         CupertinoSwitch(
                           value: _hapticEnabled,
-                          activeTrackColor: CordaTheme.aquaPrimary,
+                          activeTrackColor: CordaTheme.accentBlue,
                           onChanged: (val) {
                             setState(() => _hapticEnabled = val);
                           },
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    const Divider(color: Colors.white10, height: 1),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
-                            color: CordaTheme.aquaCyan.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
+                            color: CordaTheme.surfaceSubtle,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: CordaTheme.borderSubtle),
                           ),
-                          child: const Icon(
-                            CupertinoIcons.doc_on_clipboard_fill,
-                            color: CordaTheme.aquaCyan,
-                            size: 18,
-                          ),
+                          child: const Icon(CupertinoIcons.doc_on_clipboard_fill, color: CordaTheme.accentBlue, size: 18),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -312,35 +240,32 @@ class _SettingsTabState extends State<SettingsTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Sinkronisasi Clipboard Instan',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: Colors.white,
-                                ),
+                                'Instant Clipboard Sync',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Mendengarkan event copy global di background',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
+                                'Detect global clipboard changes in the background',
+                                style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
                               ),
                             ],
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: (_permissions.accessibility
-                                    ? CordaTheme.mintGreen
-                                    : CordaTheme.amberWarning)
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
+                            color: _permissions.accessibility
+                                ? const Color(0xFF142E1B)
+                                : const Color(0xFF2B2215),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _permissions.accessibility
+                                  ? const Color(0xFF23552D)
+                                  : const Color(0xFF5C4316),
+                            ),
                           ),
                           child: Text(
-                            _permissions.accessibility ? 'Aktif' : 'Perlu Izin',
+                            _permissions.accessibility ? 'Active' : 'Action Needed',
                             style: TextStyle(
                               color: _permissions.accessibility
                                   ? CordaTheme.mintGreen
@@ -356,68 +281,68 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              // SECTION 3: Layanan Sistem (System Services)
-              _buildSectionTitle('STATUS LAYANAN ANDROID'),
-              const SizedBox(height: 10),
-              LiquidGlassCard(
-                padding: const EdgeInsets.all(18),
+              // SECTION 3: System Services & Permissions
+              _buildSectionTitle('BACKGROUND PERMISSIONS'),
+              const SizedBox(height: 8),
+              SonomaCard(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
                     _buildServiceTile(
                       icon: CupertinoIcons.waveform_path_ecg,
-                      title: 'Foreground Service',
-                      subtitle: _isServiceRunning
-                          ? 'Service berjalan di background'
-                          : 'Service terhenti',
+                      title: 'Background Sync',
+                      subtitle: _isServiceRunning ? 'Syncing actively in background' : 'Background service paused',
                       isPositive: _isServiceRunning,
-                      statusText: _isServiceRunning ? 'Berjalan' : 'Berhenti',
-                      trailing: CupertinoButton(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        color: _isServiceRunning
-                            ? CordaTheme.roseDanger.withValues(alpha: 0.2)
-                            : CordaTheme.aquaPrimary.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        onPressed: () => _toggleService(!_isServiceRunning),
-                        child: Text(
-                          _isServiceRunning ? 'Hentikan' : 'Mulai',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _isServiceRunning
-                                ? CordaTheme.roseDanger
-                                : CordaTheme.aquaCyan,
-                          ),
-                        ),
+                      statusText: _isServiceRunning ? 'Active' : 'Paused',
+                      trailing: CupertinoSwitch(
+                        value: _isServiceRunning,
+                        activeTrackColor: CordaTheme.accentBlue,
+                        onChanged: (val) => _toggleService(val),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Divider(color: Colors.white10, height: 1),
+                    const Divider(height: 1),
                     const SizedBox(height: 12),
                     _buildServiceTile(
-                      icon: CupertinoIcons.eye_fill,
-                      title: 'Aksesibilitas (Clipboard)',
+                      icon: CupertinoIcons.doc_on_clipboard_fill,
+                      title: 'Clipboard Sync',
                       subtitle: _permissions.accessibility
-                          ? 'Izin clipboard sistem aktif'
-                          : 'Ketuk untuk membuka setelan',
+                          ? 'Automatic copy detection active'
+                          : 'Tap to enable in accessibility settings',
                       isPositive: _permissions.accessibility,
-                      statusText: _permissions.accessibility ? 'Diberikan' : 'Belum Aktif',
+                      statusText: _permissions.accessibility ? 'Active' : 'Setup',
                       onTap: () async {
                         await PlatformBridge.instance.openAccessibilitySettings();
                       },
                     ),
                     const SizedBox(height: 12),
-                    const Divider(color: Colors.white10, height: 1),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+                    _buildServiceTile(
+                      icon: CupertinoIcons.layers_alt_fill,
+                      title: 'Quick Sync',
+                      subtitle: _permissions.overlay
+                          ? 'Instant in-app copy capture active'
+                          : 'Tap to grant in system settings',
+                      isPositive: _permissions.overlay,
+                      statusText: _permissions.overlay ? 'Active' : 'Setup',
+                      onTap: () async {
+                        await PlatformBridge.instance.openOverlaySettings();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
                     const SizedBox(height: 12),
                     _buildServiceTile(
                       icon: CupertinoIcons.battery_charging,
-                      title: 'Optimasi Baterai',
+                      title: 'Background Activity',
                       subtitle: _permissions.batteryIgnored
-                          ? 'Dikecualikan dari pembatasan'
-                          : 'Ketuk untuk kecualikan Corda',
+                          ? 'Unrestricted background running'
+                          : 'Tap to prevent Android from sleeping Corda',
                       isPositive: _permissions.batteryIgnored,
-                      statusText: _permissions.batteryIgnored ? 'Diabaikan' : 'Dibatasi',
+                      statusText: _permissions.batteryIgnored ? 'Unrestricted' : 'Optimized',
                       onTap: () async {
                         await PlatformBridge.instance.openBatterySettings();
                       },
@@ -426,36 +351,33 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
 
-              // Branding footer
+              // Canonical Brand Footer
               Center(
                 child: Column(
                   children: [
                     Image.asset(
-                      'assets/images/corda_logo_icon.png',
-                      width: 44,
-                      height: 44,
+                      'assets/images/logo_corda.png',
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 8),
-                    ShaderMask(
-                      shaderCallback: (bounds) => CordaTheme.aquaGradient.createShader(bounds),
-                      child: const Text(
-                        'CORDA',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 3,
-                          color: Colors.white,
-                        ),
+                    const Text(
+                      'Corda',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'v1.0.0 (Sonoma Liquid Edition) • TLS 1.3 E2EE',
+                    const SizedBox(height: 3),
+                    const Text(
+                      'v1.0.0 • Private Local Sync',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: CordaTheme.textMuted,
                       ),
                     ),
                   ],
@@ -470,14 +392,14 @@ class _SettingsTabState extends State<SettingsTab> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.only(left: 2),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-          color: Colors.white.withValues(alpha: 0.4),
+          letterSpacing: 0.8,
+          color: CordaTheme.textMuted,
         ),
       ),
     );
@@ -495,15 +417,18 @@ class _SettingsTabState extends State<SettingsTab> {
     final tile = Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(8),
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: (isPositive ? CordaTheme.mintGreen : CordaTheme.amberWarning)
-                .withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
+            color: isPositive ? const Color(0xFF142E1B) : const Color(0xFF2B2215),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isPositive ? const Color(0xFF23552D) : const Color(0xFF5C4316),
+            ),
           ),
           child: Icon(
             icon,
-            size: 18,
+            size: 16,
             color: isPositive ? CordaTheme.mintGreen : CordaTheme.amberWarning,
           ),
         ),
@@ -514,19 +439,12 @@ class _SettingsTabState extends State<SettingsTab> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.5),
-                ),
+                style: const TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
               ),
             ],
           ),
@@ -535,11 +453,13 @@ class _SettingsTabState extends State<SettingsTab> {
           trailing
         else
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: (isPositive ? CordaTheme.mintGreen : CordaTheme.amberWarning)
-                  .withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+              color: isPositive ? const Color(0xFF142E1B) : const Color(0xFF2B2215),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isPositive ? const Color(0xFF23552D) : const Color(0xFF5C4316),
+              ),
             ),
             child: Text(
               statusText,
@@ -556,9 +476,9 @@ class _SettingsTabState extends State<SettingsTab> {
     if (onTap != null) {
       return InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: tile,
         ),
       );

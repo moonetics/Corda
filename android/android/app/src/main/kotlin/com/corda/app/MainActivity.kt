@@ -54,9 +54,14 @@ class MainActivity : FlutterActivity() {
                     val status = mapOf(
                         "accessibility" to isAccessibilityServiceEnabled(this, ClipboardAccessibilityService::class.java),
                         "batteryIgnored" to isBatteryOptimizationIgnored(this),
-                        "notification" to areNotificationsEnabled(this)
+                        "notification" to areNotificationsEnabled(this),
+                        "overlay" to Settings.canDrawOverlays(this)
                     )
                     result.success(status)
+                }
+                "openOverlaySettings" -> {
+                    openOverlaySettings()
+                    result.success(true)
                 }
                 "openAccessibilitySettings" -> {
                     openAccessibilitySettings()
@@ -320,6 +325,23 @@ class MainActivity : FlutterActivity() {
                 }
                 startActivity(fallbackIntent)
             }
+        }
+    }
+
+    private fun openOverlaySettings() {
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            val fallbackIntent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(fallbackIntent)
         }
     }
 

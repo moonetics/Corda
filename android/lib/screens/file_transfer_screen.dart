@@ -52,13 +52,13 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
       if (filePaths.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: CordaTheme.obsidianGlass,
+            backgroundColor: CordaTheme.surfaceCard,
             content: Row(
               children: [
-                const Icon(CupertinoIcons.paperplane_fill, color: CordaTheme.aquaCyan, size: 18),
+                const Icon(CupertinoIcons.paperplane_fill, color: CordaTheme.accentBlue, size: 16),
                 const SizedBox(width: 10),
                 Text(
-                  'Mengirim ${filePaths.length} berkas ke Mac...',
+                  'Sending ${filePaths.length} file(s) to Mac...',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
                 ),
               ],
@@ -66,8 +66,8 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: CordaTheme.obsidianGlassBorder),
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: CordaTheme.borderSubtle),
             ),
           ),
         );
@@ -86,136 +86,92 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: CordaTheme.canvasBg,
+      appBar: AppBar(
+        backgroundColor: CordaTheme.canvasBg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.chevron_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'File Transfers',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+      ),
       body: SafeArea(
-        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
           children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: CordaTheme.aquaGradient,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: CordaTheme.aquaCyan.withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.arrow_up_arrow_down_circle_fill,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Transfer Berkas',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      'Streaming Berkecepatan Tinggi via Wi-Fi Lokal',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Kirim Berkas Action Card
-            LiquidGlassCard(
-              glow: true,
-              padding: const EdgeInsets.all(24),
+            // Send Files Action Card
+            SonomaCard(
+              padding: const EdgeInsets.all(20),
               onTap: _isPicking ? null : _pickAndSendFiles,
               child: Column(
                 children: [
                   Container(
-                    width: 72,
-                    height: 72,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(
+                      color: CordaTheme.surfaceSubtle,
                       shape: BoxShape.circle,
-                      gradient: CordaTheme.aquaGradient,
-                      boxShadow: [
-                        BoxShadow(
-                          color: CordaTheme.aquaCyan.withValues(alpha: 0.4),
-                          blurRadius: 28,
-                          spreadRadius: 2,
-                        ),
-                      ],
+                      border: Border.all(color: CordaTheme.borderSubtle),
                     ),
                     child: _isPicking
                         ? const Center(
-                            child: CupertinoActivityIndicator(
-                              color: Colors.white,
-                              radius: 14,
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: CordaTheme.accentBlue),
                             ),
                           )
                         : const Icon(
                             CupertinoIcons.cloud_upload_fill,
-                            color: Colors.white,
-                            size: 34,
+                            color: CordaTheme.accentBlue,
+                            size: 26,
                           ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   const Text(
-                    'Kirim Berkas ke Mac',
+                    'Send Files to Mac',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Ketuk untuk memilih foto, video, arsip, atau dokumen',
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Tap to select photos, videos, archives, or documents',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 12,
+                      color: CordaTheme.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                      color: CordaTheme.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: CordaTheme.borderSubtle),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           CupertinoIcons.bolt_fill,
-                          color: CordaTheme.aquaCyan,
-                          size: 14,
+                          color: CordaTheme.mintGreen,
+                          size: 12,
                         ),
                         SizedBox(width: 6),
                         Text(
-                          'Data Channel 54322 • Chunking 256KB',
+                          'Direct TCP Port 54322 • 256KB Chunks',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: CordaTheme.aquaCyan,
+                            color: CordaTheme.textSecondary,
                           ),
                         ),
                       ],
@@ -225,18 +181,18 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Active Transfer Status Card
-            _buildSectionTitle('STATUS STREAMING SAAT INI'),
-            const SizedBox(height: 10),
+            _buildSectionTitle('ACTIVE STREAM'),
+            const SizedBox(height: 8),
             _buildActiveTransferCard(),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-            // Riwayat Transfer
-            _buildSectionTitle('RIWAYAT TRANSFER SESI INI'),
-            const SizedBox(height: 10),
+            // Recent Session Transfers
+            _buildSectionTitle('SESSION HISTORY'),
+            const SizedBox(height: 8),
             _buildCompletedTransfersList(),
           ],
         ),
@@ -246,14 +202,14 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
+      padding: const EdgeInsets.only(left: 2),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-          color: Colors.white.withValues(alpha: 0.4),
+          letterSpacing: 0.8,
+          color: CordaTheme.textMuted,
         ),
       ),
     );
@@ -264,58 +220,18 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
     final isActive = transfer != null && !transfer.isCompleted;
 
     if (!isActive) {
-      return LiquidGlassCard(
-        padding: const EdgeInsets.all(18),
-        child: Row(
+      return SonomaCard(
+        padding: const EdgeInsets.all(14),
+        child: const Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                CupertinoIcons.circle_grid_hex_fill,
-                color: Colors.white38,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
+            Icon(CupertinoIcons.checkmark_circle, color: CordaTheme.textMuted, size: 18),
+            SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Saluran Streaming Siaga',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Menunggu pengiriman dari Mac atau Android',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.45),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: CordaTheme.mintGreen.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Siap',
+              child: Text(
+                'No active file stream. Select a file above to begin sending.',
                 style: TextStyle(
-                  color: CordaTheme.mintGreen,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: CordaTheme.textSecondary,
                 ),
               ),
             ),
@@ -324,106 +240,91 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
       );
     }
 
-    final isIncoming = transfer.direction == 'incoming';
-    final progressFraction = (transfer.progressPercent / 100.0).clamp(0.0, 1.0);
+    final isIncoming = transfer.direction == 'inbound';
+    final progressPct = (transfer.progress * 100).toInt();
 
-    return LiquidGlassCard(
-      glow: true,
-      borderColor: CordaTheme.aquaCyan.withValues(alpha: 0.4),
-      padding: const EdgeInsets.all(18),
+    return SonomaCard(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  gradient: CordaTheme.aquaGradient,
-                  borderRadius: BorderRadius.circular(12),
+                  color: CordaTheme.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: CordaTheme.borderSubtle),
                 ),
                 child: Icon(
-                  isIncoming
-                      ? CupertinoIcons.arrow_down_doc_fill
-                      : CupertinoIcons.arrow_up_doc_fill,
-                  color: Colors.white,
-                  size: 20,
+                  isIncoming ? CupertinoIcons.arrow_down_doc_fill : CupertinoIcons.arrow_up_doc_fill,
+                  color: CordaTheme.accentBlue,
+                  size: 18,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      transfer.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      transfer.filename,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
                         color: Colors.white,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isIncoming ? 'Menerima dari Mac' : 'Mengirim ke Mac',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.5),
+                      isIncoming ? 'Receiving from Mac' : 'Sending to Mac',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: CordaTheme.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
               Text(
-                '${transfer.progressPercent}%',
+                '$progressPct%',
                 style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18,
-                  color: CordaTheme.aquaCyan,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: CordaTheme.accentBlue,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: progressFraction,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-              valueColor: const AlwaysStoppedAnimation<Color>(CordaTheme.aquaCyan),
-              minHeight: 8,
+              value: transfer.progress,
+              backgroundColor: CordaTheme.surfaceSubtle,
+              valueColor: const AlwaysStoppedAnimation<Color>(CordaTheme.accentBlue),
+              minHeight: 6,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Berkas ${transfer.fileIndex + 1} dari ${transfer.totalFiles}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.6),
-                ),
+                transfer.formattedBytes,
+                style: const TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
               ),
-              Row(
-                children: [
-                  const Icon(
-                    CupertinoIcons.speedometer,
-                    size: 14,
-                    color: CordaTheme.mintGreen,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${transfer.speedMBs.toStringAsFixed(1)} MB/s',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: CordaTheme.mintGreen,
-                    ),
-                  ),
-                ],
+              Text(
+                transfer.formattedSpeed,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: CordaTheme.mintGreen,
+                ),
               ),
             ],
           ),
@@ -434,74 +335,67 @@ class _FileTransferScreenState extends State<FileTransferScreen> {
 
   Widget _buildCompletedTransfersList() {
     if (_completedTransfers.isEmpty) {
-      return LiquidGlassCard(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                CupertinoIcons.tray_fill,
-                size: 32,
-                color: Colors.white.withValues(alpha: 0.25),
+      return SonomaCard(
+        padding: const EdgeInsets.all(14),
+        child: const Row(
+          children: [
+            Icon(CupertinoIcons.clock, color: CordaTheme.textMuted, size: 16),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Transferred files this session will appear here.',
+                style: TextStyle(fontSize: 12, color: CordaTheme.textSecondary),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Belum ada riwayat transfer',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.4),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
 
-    return LiquidGlassCard(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        children: _completedTransfers.take(8).map((item) {
-          final isIncoming = item.direction == 'incoming';
-          return ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: (isIncoming ? CordaTheme.mintGreen : CordaTheme.aquaPrimary)
-                    .withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
+    return Column(
+      children: _completedTransfers.map((item) {
+        final isSuccess = !item.isFailed;
+        return SonomaCard(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(
+                isSuccess ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.xmark_circle_fill,
+                color: isSuccess ? CordaTheme.mintGreen : CordaTheme.roseDanger,
+                size: 20,
               ),
-              child: Icon(
-                isIncoming ? CupertinoIcons.arrow_down : CupertinoIcons.arrow_up,
-                color: isIncoming ? CordaTheme.mintGreen : CordaTheme.aquaCyan,
-                size: 16,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.filename,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${item.formattedBytes} • ${item.direction == 'inbound' ? 'From Mac' : 'To Mac'}',
+                      style: const TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            title: Text(
-              item.fileName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: Colors.white,
+              Text(
+                isSuccess ? 'Completed' : 'Failed',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSuccess ? CordaTheme.mintGreen : CordaTheme.roseDanger,
+                ),
               ),
-            ),
-            subtitle: Text(
-              isIncoming ? 'Diterima di Download/Corda' : 'Terkirim ke Mac',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.4),
-              ),
-            ),
-            trailing: const Icon(
-              CupertinoIcons.checkmark_alt_circle_fill,
-              color: CordaTheme.mintGreen,
-              size: 20,
-            ),
-          );
-        }).toList(),
-      ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

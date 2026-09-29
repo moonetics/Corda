@@ -122,15 +122,17 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: CordaTheme.aquaPrimary.withValues(alpha: 0.15),
+                        color: CordaTheme.surfaceSubtle,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CordaTheme.borderSubtle),
                       ),
                       child: const Icon(
                         Icons.laptop_mac_rounded,
-                        color: CordaTheme.aquaPrimary,
-                        size: 26,
+                        color: CordaTheme.accentBlue,
+                        size: 24,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -139,71 +141,60 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            deviceName.isNotEmpty ? deviceName : 'MacBook Terdeteksi',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
+                            deviceName.isNotEmpty ? deviceName : 'Mac Discovered',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 2),
                           const Text(
-                            'Verifikasi Kunci Kriptografi & Pairing',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                            'Pair Device',
+                            style: TextStyle(fontSize: 12, color: CordaTheme.textSecondary),
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
+                const Text(
+                  'Allow this Mac to sync clipboard and transfer files securely with your phone.',
+                  style: TextStyle(fontSize: 12, color: CordaTheme.textSecondary, height: 1.3),
+                ),
+                const SizedBox(height: 16),
                 if (pin.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      ),
+                      color: CordaTheme.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: CordaTheme.borderSubtle),
                     ),
                     child: Column(
                       children: [
                         const Text(
-                          'KODE PIN VERIFIKASI',
+                          'VERIFICATION CODE',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
                             letterSpacing: 1.2,
-                            color: Colors.grey,
+                            color: CordaTheme.textMuted,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
                           pin,
                           style: const TextStyle(
-                            fontSize: 28,
+                            fontSize: 26,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 6,
-                            color: CordaTheme.aquaPrimary,
+                            color: CordaTheme.accentBlue,
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                if (fingerprint.isNotEmpty) ...[
-                  Text(
-                    'Fingerprint Kunci Publik:',
-                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    fingerprint,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: CordaTheme.mintGreen,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -211,70 +202,82 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          setState(() => _isProcessingCode = false);
-                        },
-                        child: const Text('Batal'),
+                      child: SizedBox(
+                        height: 44,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: CordaTheme.borderSubtle),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            setState(() => _isProcessingCode = false);
+                          },
+                          child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: CordaTheme.mintGreen,
-                        ),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          final targetHost = host.isNotEmpty ? host : '127.0.0.1';
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CordaTheme.accentBlue,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            final targetHost = host.isNotEmpty ? host : '127.0.0.1';
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text('Menghubungkan ke $deviceName...'),
-                                ],
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text('Connecting to $deviceName...'),
+                                  ],
+                                ),
+                                duration: const Duration(seconds: 5),
                               ),
-                              duration: const Duration(seconds: 5),
-                            ),
-                          );
+                            );
 
-                          final result = await PlatformBridge.instance.pairDevice(
-                            host: targetHost,
-                            port: port,
-                            pin: pin,
-                            fingerprint: fingerprint,
-                          );
+                            final result = await PlatformBridge.instance.pairDevice(
+                              host: targetHost,
+                              port: port,
+                              pin: pin,
+                              fingerprint: fingerprint,
+                            );
 
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            if (result['success'] == true) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: CordaTheme.mintGreen,
-                                  content: Text('Berhasil dipasangkan dengan $deviceName!'),
-                                ),
-                              );
-                              Navigator.of(context).pop(true);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: Colors.redAccent,
-                                  content: Text(result['message']?.toString() ?? 'Pairing gagal'),
-                                ),
-                              );
-                              setState(() => _isProcessingCode = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              if (result['success'] == true) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: CordaTheme.mintGreen,
+                                    content: Text('Successfully paired with $deviceName!'),
+                                  ),
+                                );
+                                Navigator.of(context).pop(true);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: Colors.redAccent,
+                                    content: Text(result['message']?.toString() ?? 'Pairing failed'),
+                                  ),
+                                );
+                                setState(() => _isProcessingCode = false);
+                              }
                             }
-                          }
-                        },
-                        child: const Text('Konfirmasi & Pasangkan'),
+                          },
+                          child: const Text('Pair', style: TextStyle(fontWeight: FontWeight.w700)),
+                        ),
                       ),
                     ),
                   ],
@@ -294,20 +297,20 @@ class _QRScannerScreenState extends State<QRScannerScreen>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
-              Icon(Icons.pin_rounded, color: CordaTheme.aquaPrimary),
+              Icon(Icons.pin_rounded, color: CordaTheme.accentBlue),
               SizedBox(width: 10),
-              Text('Masukkan PIN Manual'),
+              Text('Enter 6-Digit PIN'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Lihat kode 6-digit yang muncul di jendela menu bar Corda Mac Anda.',
-                style: TextStyle(fontSize: 13),
+                'Enter the 6-digit code shown in Corda on your Mac.',
+                style: TextStyle(fontSize: 13, color: CordaTheme.textSecondary),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -339,9 +342,13 @@ class _QRScannerScreenState extends State<QRScannerScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Batal'),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: CordaTheme.accentBlue,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 final pin = pinController.text.trim();
                 if (pin.length == 6) {
@@ -354,7 +361,7 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                   );
                 }
               },
-              child: const Text('Hubungkan'),
+              child: const Text('Connect'),
             ),
           ],
         );
@@ -453,10 +460,10 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.qr_code_scanner_rounded, color: CordaTheme.aquaCyan, size: 20),
+                        Icon(Icons.qr_code_scanner_rounded, color: CordaTheme.accentBlue, size: 20),
                         SizedBox(width: 8),
                         Text(
-                          'Arahkan kamera ke QR Code di layar Mac',
+                          'Point camera at the QR code on your Mac',
                           style: TextStyle(color: Colors.white, fontSize: 13),
                         ),
                       ],
@@ -474,7 +481,7 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                     ),
                     onPressed: _showManualPinDialog,
                     icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
-                    label: const Text('Masukkan PIN Manual (6-Digit)'),
+                    label: const Text('Enter PIN Manually (6-Digit)'),
                   ),
                 ],
               ),

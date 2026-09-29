@@ -5,20 +5,23 @@ class PermissionStatusModel {
   final bool accessibility;
   final bool batteryIgnored;
   final bool notification;
+  final bool overlay;
 
   const PermissionStatusModel({
     required this.accessibility,
     required this.batteryIgnored,
     required this.notification,
+    this.overlay = false,
   });
 
-  bool get isAllGranted => accessibility && batteryIgnored && notification;
+  bool get isAllGranted => accessibility && batteryIgnored && notification && overlay;
 
   factory PermissionStatusModel.fromMap(Map<dynamic, dynamic> map) {
     return PermissionStatusModel(
       accessibility: map['accessibility'] as bool? ?? false,
       batteryIgnored: map['batteryIgnored'] as bool? ?? false,
       notification: map['notification'] as bool? ?? false,
+      overlay: map['overlay'] as bool? ?? false,
     );
   }
 }
@@ -96,6 +99,12 @@ class TransferEventModel {
     required this.isCompleted,
   });
 
+  double get progress => (progressPercent.clamp(0, 100)) / 100.0;
+  String get filename => fileName;
+  bool get isFailed => false;
+  String get formattedSpeed => '${speedMBs.toStringAsFixed(1)} MB/s';
+  String get formattedBytes => '$progressPercent%';
+
   factory TransferEventModel.fromMap(Map<dynamic, dynamic> map) {
     return TransferEventModel(
       transferId: map['transferId'] as String? ?? '',
@@ -155,6 +164,12 @@ class PlatformBridge {
     } catch (_) {}
   }
 
+  Future<void> openOverlaySettings() async {
+    try {
+      await _channel.invokeMethod('openOverlaySettings');
+    } catch (_) {}
+  }
+
   Future<void> startForegroundService() async {
     try {
       await _channel.invokeMethod('startForegroundService');
@@ -204,7 +219,7 @@ class PlatformBridge {
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
-    return {'success': false, 'message': 'Gagal menghubungkan ke Mac'};
+    return {'success': false, 'message': 'Failed to connect to Mac'};
   }
 
   Stream<ClipboardEventModel> get clipboardStream {

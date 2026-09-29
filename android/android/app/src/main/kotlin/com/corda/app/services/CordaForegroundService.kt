@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -71,6 +72,47 @@ class CordaForegroundService : Service() {
     var socketClient: ControlSocketClient? = null
         private set
 
+    private var clipboardManager: ClipboardManager? = null
+    private val primaryClipListener = ClipboardManager.OnPrimaryClipChangedListener {
+        Log.d(TAG, "ForegroundService onPrimaryClipChanged terdeteksi.")
+        launchTransparentReader()
+    }
+
+    private fun launchTransparentReader() {
+        try {
+            val intent = Intent(this, com.corda.app.actions.TransparentClipboardReaderActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                android.app.ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                }
+            } else {
+                android.app.ActivityOptions.makeBasic()
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                this,
+                1002,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) android.app.PendingIntent.FLAG_IMMUTABLE else 0),
+                options.toBundle()
+            )
+            pendingIntent.send()
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal meluncurkan TransparentClipboardReaderActivity via PendingIntent dari ForegroundService: ${e.message}")
+            try {
+                val fallbackIntent = Intent(this, com.corda.app.actions.TransparentClipboardReaderActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+                }
+                startActivity(fallbackIntent)
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -83,6 +125,9 @@ class CordaForegroundService : Service() {
         observeTransferEvents()
         registerNetworkCallback()
         registerScreenReceiver()
+
+        clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboardManager?.addPrimaryClipChangedListener(primaryClipListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -136,7 +181,7 @@ class CordaForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        // Silent, minimal notification
+        // Clean, minimal and quiet foreground notification
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Corda siaga di latar belakang")
             .setContentText("Menjembatani Mac & Android via Wi-Fi lokal")
@@ -396,6 +441,10 @@ class CordaForegroundService : Service() {
 
         try {
             screenReceiver?.let { unregisterReceiver(it) }
+        } catch (_: Exception) {}
+
+        try {
+            clipboardManager?.removePrimaryClipChangedListener(primaryClipListener)
         } catch (_: Exception) {}
 
         socketClient?.disconnect()

@@ -4,12 +4,15 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import com.corda.app.actions.TransparentClipboardReaderActivity
 import com.corda.app.events.ClipboardCopiedEvent
 import com.corda.app.events.CordaEventBus
 import kotlinx.coroutines.CoroutineScope
@@ -27,9 +30,9 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
         private const val TAG = "CordaClipboardAcc"
         private var lastProcessedText: String? = null
         private var lastProcessedTime: Long = 0L
-        private const val DEDUPLICATION_WINDOW_MS = 600L
+        private const val DEDUPLICATION_WINDOW_MS = 800L
 
-        private val recentRemoteHashes = Collections.synchronizedSet(mutableSetOf<String>())
+        val recentRemoteHashes = Collections.synchronizedSet(mutableSetOf<String>())
 
         /**
          * Register a hash received from the remote Mac so it won't echo back.
@@ -42,6 +45,10 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
             }
         }
 
+        fun isRemoteHash(hash: String): Boolean {
+            return recentRemoteHashes.contains(hash.lowercase())
+        }
+
         fun computeSha256(text: String): String {
             val md = MessageDigest.getInstance("SHA-256")
             val digest = md.digest(text.toByteArray(Charsets.UTF_8))
@@ -51,6 +58,8 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
 
     private var clipboardManager: ClipboardManager? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var lastSelectedText: String? = null
+    private var lastSelectionTime: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -61,7 +70,17 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
 
     override fun onPrimaryClipChanged() {
         Log.d(TAG, "onPrimaryClipChanged terdeteksi oleh sistem.")
-        checkAndProcessClipboard("system_clipboard_listener")
+
+        // 1. Fast-Path: If text was recently selected in UI (< 3000ms), emit immediately
+        val candidate = lastSelectedText
+        val now = System.currentTimeMillis()
+        if (!candidate.isNullOrEmpty() && (now - lastSelectionTime) < 3000L) {
+            Log.i(TAG, "Fast-path: Memancarkan lastSelectedText (${candidate.length} chars) ke Mac...")
+            emitClipboardText(candidate, "android.ui.fastpath")
+        }
+
+        // 2. Definitive Path: Launch zero-animation TransparentActivity which waits for onWindowFocusChanged(true)
+        launchTransparentReader()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -70,90 +89,293 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
         val eventType = event.eventType
         val pkg = event.packageName?.toString() ?: ""
 
-        // Listen for interactions likely indicating user copy / selection actions
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY
-        ) {
-            checkAndProcessClipboard(pkg)
-            
-            // Asynchronous delayed checks: third-party apps (Chrome, WhatsApp, Notes)
-            // write to the clipboard asynchronously after the click/selection event.
-            serviceScope.launch {
-                delay(120L)
-                checkAndProcessClipboard(pkg)
-                delay(200L)
-                checkAndProcessClipboard(pkg)
+        // 1. Sniff text selection changes directly from UI nodes
+        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
+            captureSelectionFromEvent(event)
+            return
+        }
+
+        // 2. Toast / Notification state changed ("Berhasil disalin", "Tersalin ke clipboard", etc.)
+        if (eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            val textList = event.text.map { it.toString() }
+            val joined = textList.joinToString(" ").lowercase()
+            Log.d(TAG, "Notification/Toast detected: '$joined'")
+
+            val copyKeywords = listOf(
+                "salin", "copy", "tersalin", "disalin", "clipboard", "klip",
+                "papan klip", "copied", "berhasil disalin", "berhasil", "copied to clipboard"
+            )
+            if (copyKeywords.any { joined.contains(it) }) {
+                Log.i(TAG, "Toast konfirmasi salin terdeteksi ('$joined')! Meluncurkan transparent reader...")
+                launchTransparentReader()
+                return
+            }
+        }
+
+        // 3. In-App snackbar or window content change with copy confirmation
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (event.text.isNotEmpty()) {
+                val joined = event.text.joinToString(" ").lowercase()
+                if (joined.contains("berhasil disalin") || joined.contains("disalin ke") ||
+                    joined.contains("tersalin ke") || joined.contains("copied to") ||
+                    joined.contains("link copied") || joined.contains("tautan disalin")
+                ) {
+                    Log.i(TAG, "In-app snackbar copy terdeteksi ('$joined')! Meluncurkan transparent reader...")
+                    launchTransparentReader()
+                    return
+                }
+            }
+        }
+
+        // 4. Detect when user clicks "Copy" / "Salin" in context toolbar, keyboard, or in-app icon
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (isCopyOrCutAction(event)) {
+                Log.i(TAG, "User tapped Copy/Salin button! Propagating selected text...")
+                val candidateText = lastSelectedText
+                if (!candidateText.isNullOrEmpty() && (System.currentTimeMillis() - lastSelectionTime) < 30000L) {
+                    emitClipboardText(candidateText, pkg.ifEmpty { "android.ui.selection" })
+                }
+                serviceScope.launch {
+                    delay(50L)
+                    launchTransparentReader()
+                }
+                return
+            }
+
+            // Fallback for custom in-app copy icons (e.g. Seakun email/password rows)
+            val source = event.source
+            if (source != null) {
+                val adjacent = extractAdjacentCopyText(source)
+                if (!adjacent.isNullOrEmpty()) {
+                    Log.i(TAG, "Teks terdeteksi di samping tombol salin: '$adjacent'. Memancarkan & meluncurkan reader...")
+                    emitClipboardText(adjacent, pkg.ifEmpty { "android.ui.adjacent" })
+                    serviceScope.launch {
+                        delay(60L)
+                        launchTransparentReader()
+                    }
+                    return
+                }
             }
         }
     }
 
-    private fun checkAndProcessClipboard(sourcePackage: String) {
+    private fun captureSelectionFromEvent(event: AccessibilityEvent) {
+        try {
+            val source = event.source
+            if (source != null) {
+                val fullText = source.text?.toString()
+                val start = source.textSelectionStart.takeIf { it >= 0 } ?: event.fromIndex
+                val end = source.textSelectionEnd.takeIf { it >= 0 } ?: event.toIndex
+
+                if (fullText != null && start >= 0 && end > start && end <= fullText.length) {
+                    lastSelectedText = fullText.substring(start, end)
+                    lastSelectionTime = System.currentTimeMillis()
+                    Log.d(TAG, "Cached selected text (${lastSelectedText?.length} chars): '${lastSelectedText?.take(20)}...'")
+                    return
+                }
+            }
+
+            // Fallback: check event text list
+            if (event.text.isNotEmpty()) {
+                val joined = event.text.joinToString("")
+                val from = event.fromIndex
+                val to = event.toIndex
+                if (from >= 0 && to > from && to <= joined.length) {
+                    lastSelectedText = joined.substring(from, to)
+                    lastSelectionTime = System.currentTimeMillis()
+                    Log.d(TAG, "Cached selected text from event text (${lastSelectedText?.length} chars)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error capturing selection from event", e)
+        }
+    }
+
+    private fun isCopyOrCutAction(event: AccessibilityEvent): Boolean {
+        try {
+            val pkg = (event.packageName?.toString() ?: "").lowercase()
+            val eventDesc = (event.contentDescription?.toString() ?: "").lowercase()
+            val eventText = event.text.joinToString(" ").lowercase()
+
+            val source = event.source
+            val sourceText = (source?.text?.toString() ?: "").lowercase()
+            val sourceDesc = (source?.contentDescription?.toString() ?: "").lowercase()
+            val resId = (source?.viewIdResourceName ?: "").lowercase()
+
+            val combined = "$eventDesc $eventText $sourceText $sourceDesc"
+            val keywords = listOf("copy", "salin", "copier", "kopi", "cut", "potong", "tautan", "link", "url", "code", "kode", "clip", "klip")
+
+            if (keywords.any { combined.contains(it) } || 
+                resId.contains("copy") || resId.contains("cut") || 
+                resId.contains("link") || resId.contains("tautan") || 
+                resId.contains("clip") || resId.contains("share")
+            ) {
+                return true
+            }
+
+            // Keyboard/IME toolbar detection (Gboard, Samsung Keyboard, SwiftKey)
+            val isKeyboard = pkg.contains("inputmethod") || pkg.contains("gboard") ||
+                    pkg.contains("touchtype") || pkg.contains("keyboard") || pkg.contains("samsung")
+            if (isKeyboard) {
+                if (combined.contains("clip") || combined.contains("klip") ||
+                    combined.contains("action") || resId.contains("action") || resId.contains("edit")
+                ) {
+                    return true
+                }
+            }
+
+            return false
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    private fun checkAndProcessClipboard(sourcePackage: String): Boolean {
         val manager = clipboardManager ?: (getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.also {
             clipboardManager = it
-        } ?: return
+        } ?: return false
 
         try {
-            if (!manager.hasPrimaryClip()) return
+            if (!manager.hasPrimaryClip()) return false
 
-            val description = manager.primaryClipDescription ?: return
+            val description = manager.primaryClipDescription ?: return false
 
-            // Verify if mime type is plain text or html
             val isText = description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
                     description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
 
-            if (!isText) return
+            if (!isText) return false
 
-            // Sensitive data filtering (Android 13+ / API 33+ flag EXTRA_IS_SENSITIVE)
-            val isSensitive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                description.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) == true
-            } else {
-                false
-            }
+            // Universal sync: Capture all clipboard content including credentials and passwords without exception
 
-            if (isSensitive) {
-                Log.w(TAG, "Sensitif terdeteksi (EXTRA_IS_SENSITIVE = true). Teks clipboard diabaikan demi privasi pengguna.")
-                return
-            }
-
-            val clipData = manager.primaryClip ?: return
-            if (clipData.itemCount <= 0) return
+            val clipData = manager.primaryClip ?: return false
+            if (clipData.itemCount <= 0) return false
 
             val textItem = clipData.getItemAt(0)?.coerceToText(this)?.toString()
-            if (textItem.isNullOrEmpty()) return
+            if (textItem.isNullOrEmpty()) return false
 
-            val textHash = computeSha256(textItem).lowercase()
-            if (recentRemoteHashes.contains(textHash)) {
-                Log.d(TAG, "Teks clipboard berasal dari remote sync (hash cocok). Mengabaikan untuk mencegah echo loop.")
-                recentRemoteHashes.remove(textHash)
-                return
-            }
-
-            val currentTime = System.currentTimeMillis()
-            // Deduplicate: avoid firing multiple events for the same text within window
-            if (textItem == lastProcessedText && (currentTime - lastProcessedTime) < DEDUPLICATION_WINDOW_MS) {
-                return
-            }
-
-            lastProcessedText = textItem
-            lastProcessedTime = currentTime
-
-            Log.i(TAG, "Aksi salin terdeteksi! Teks (${textItem.length} chars) dari paket: $sourcePackage")
-            triggerHapticFeedback()
-            
-            // Post event to CordaEventBus for CordaForegroundService and Flutter Layer
-            val event = ClipboardCopiedEvent(
-                text = textItem,
-                timestamp = currentTime,
-                isSensitive = false,
-                sourcePackage = sourcePackage
-            )
-            CordaEventBus.postClipboardEvent(event)
+            return emitClipboardText(textItem, sourcePackage)
 
         } catch (e: Exception) {
             Log.e(TAG, "Error checking clipboard in AccessibilityService", e)
+            return false
+        }
+    }
+
+    private fun emitClipboardText(text: String, sourcePackage: String): Boolean {
+        val textHash = computeSha256(text).lowercase()
+        if (recentRemoteHashes.contains(textHash)) {
+            Log.d(TAG, "Teks clipboard berasal dari remote sync. Mengabaikan untuk cegah echo loop.")
+            recentRemoteHashes.remove(textHash)
+            return false
+        }
+
+        val currentTime = System.currentTimeMillis()
+        if (text == lastProcessedText && (currentTime - lastProcessedTime) < DEDUPLICATION_WINDOW_MS) {
+            return false
+        }
+
+        lastProcessedText = text
+        lastProcessedTime = currentTime
+
+        Log.i(TAG, "Aksi salin terdeteksi! Teks (${text.length} chars) dari paket: $sourcePackage")
+        triggerHapticFeedback()
+
+        val event = ClipboardCopiedEvent(
+            text = text,
+            timestamp = currentTime,
+            isSensitive = false,
+            sourcePackage = sourcePackage
+        )
+        CordaEventBus.postClipboardEvent(event)
+        return true
+    }
+
+    private fun extractAdjacentCopyText(source: AccessibilityNodeInfo): String? {
+        try {
+            // 1. Direct text on clicked view itself
+            val selfText = source.text?.toString()?.trim()
+            if (!selfText.isNullOrEmpty()) {
+                val clean = cleanFieldLabel(selfText)
+                if (clean.isNotEmpty()) return clean
+            }
+
+            // 2. Siblings in parent container (e.g. Email row with copy button)
+            val parent = source.parent ?: return null
+            for (i in 0 until parent.childCount) {
+                val child = parent.getChild(i) ?: continue
+                if (child == source) continue
+
+                val text = child.text?.toString()?.trim()
+                if (!text.isNullOrEmpty()) {
+                    val clean = cleanFieldLabel(text)
+                    if (clean.isNotEmpty()) return clean
+                }
+
+                // Search 1 level deeper in child containers
+                for (j in 0 until child.childCount) {
+                    val subChild = child.getChild(j) ?: continue
+                    val subText = subChild.text?.toString()?.trim()
+                    if (!subText.isNullOrEmpty()) {
+                        val clean = cleanFieldLabel(subText)
+                        if (clean.isNotEmpty()) return clean
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    private fun cleanFieldLabel(raw: String): String {
+        val lower = raw.lowercase()
+        val prefixes = listOf(
+            "email:", "email :", "password:", "password :", "kata sandi:",
+            "sandi:", "akun:", "username:", "pin:", "kode:", "link:", "url:",
+            "nomor:", "no:", "token:"
+        )
+        for (p in prefixes) {
+            if (lower.startsWith(p)) {
+                val extracted = raw.substring(p.length).trim()
+                if (extracted.isNotEmpty()) return extracted
+            }
+        }
+        if (raw.contains("@") || raw.startsWith("http://") || raw.startsWith("https://")) {
+            return raw
+        }
+        return ""
+    }
+
+    private fun launchTransparentReader() {
+        try {
+            val intent = Intent(this, TransparentClipboardReaderActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                android.app.ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                }
+            } else {
+                android.app.ActivityOptions.makeBasic()
+            }
+
+            try {
+                // Direct activity start from AccessibilityService (BAL-exempt)
+                startActivity(intent, options.toBundle())
+            } catch (_: Exception) {
+                val pendingIntent = android.app.PendingIntent.getActivity(
+                    this,
+                    1001,
+                    intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) android.app.PendingIntent.FLAG_IMMUTABLE else 0),
+                    options.toBundle()
+                )
+                pendingIntent.send()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal meluncurkan TransparentClipboardReaderActivity: ${e.message}")
         }
     }
 
@@ -186,4 +408,3 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
         Log.i(TAG, "Corda ClipboardAccessibilityService destroyed.")
     }
 }
-

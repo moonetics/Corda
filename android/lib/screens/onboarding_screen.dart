@@ -84,10 +84,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: Image.asset(
-                      'assets/images/corda_logo_icon.png',
+                      'assets/images/logo_corda.png',
                       width: 38,
                       height: 38,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                       errorBuilder: (_, _, _) => Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
@@ -177,13 +177,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           curve: Curves.easeInOut,
                         );
                       },
-                      child: const Text('Kembali'),
+                      child: const Text('Back'),
                     )
                   else
                     TextButton(
                       onPressed: _navigateToDashboard,
                       child: Text(
-                        'Lewati Pengaturan',
+                        'Skip Setup',
                         style: TextStyle(color: colorScheme.onSurfaceVariant),
                       ),
                     ),
@@ -198,7 +198,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       },
                       child: const Row(
                         children: [
-                          Text('Lanjut'),
+                          Text('Next'),
                           SizedBox(width: 6),
                           Icon(Icons.arrow_forward_rounded, size: 18),
                         ],
@@ -212,7 +212,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       onPressed: _navigateToDashboard,
                       child: const Row(
                         children: [
-                          Text('Mulai Menggunakan Corda'),
+                          Text('Get Started with Corda'),
                           SizedBox(width: 8),
                           Icon(Icons.check_circle_rounded, size: 18),
                         ],
@@ -250,13 +250,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 24),
           Text(
-            'Layanan Latar Belakang Hening',
+            'Silent Background Service',
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
           Text(
-            'Corda menggunakan notifikasi berprioritas terendah (IMPORTANCE_MIN) agar koneksi lokal dengan Mac tetap terjaga tanpa membunyikan nada atau mengganggu layar Anda.',
+            'Corda runs a silent, low-priority background service to maintain a seamless local connection with your Mac without intrusive notifications.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
               height: 1.45,
@@ -282,8 +282,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 Expanded(
                   child: Text(
                     _status.notification
-                        ? 'Izin Notifikasi Aktif'
-                        : 'Notifikasi hening diperlukan untuk keep-alive',
+                        ? 'Notification Permission Active'
+                        : 'Silent notification required for background sync',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -318,13 +318,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 24),
           Text(
-            'Aktivasi Layanan Aksesibilitas',
+            'Instant Clipboard Sync',
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
           Text(
-            'Pada Android 10+, sistem melarang aplikasi di latar belakang membaca clipboard. Corda menggunakan Aksesibilitas secara event-driven murni untuk mendeteksi aksi salin teks.',
+            'Allows Corda to detect when you copy text or links across your apps, syncing them instantly to your Mac in the background.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
               height: 1.45,
@@ -344,7 +344,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Privasi Aman: Password dari Bitwarden/1Password otomatis disaring & diabaikan.',
+                    'End-to-End Encrypted: Copied text is securely transferred directly to your Mac.',
                     style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
                   ),
                 ),
@@ -369,8 +369,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             label: Text(
               _status.accessibility
-                  ? 'Aksesibilitas Aktif ✓'
-                  : 'Buka Pengaturan Aksesibilitas (1-Tap)',
+                  ? 'Clipboard Sync Active ✓'
+                  : 'Enable in Accessibility Settings',
             ),
           ),
         ],
@@ -401,13 +401,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 24),
           Text(
-            'Optimasi Baterai & Daya Tahan',
+            'Background Activity',
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
           Text(
-            'Kecualikan Corda dari pembunuhan tugas latar belakang agresif oleh OS (Xiaomi, Samsung, Oppo). Corda sangat hemat daya (< 1.5% baterai per 24 jam).',
+            'Exempt Corda from battery restrictions so Android does not pause sync while your screen is off. Corda uses negligible battery (<1.5% daily).',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
               height: 1.45,
@@ -436,8 +436,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             label: Text(
               _status.batteryIgnored
-                  ? 'Optimasi Baterai Dikecualikan ✓'
-                  : 'Kecualikan Optimasi Baterai (1-Tap)',
+                  ? 'Background Activity Allowed ✓'
+                  : 'Allow Background Activity',
             ),
           ),
         ],
