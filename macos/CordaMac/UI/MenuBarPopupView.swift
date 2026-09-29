@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct MenuBarPopupView: View {
     @ObservedObject private var discovery = BonjourDiscoveryManager.shared
     @ObservedObject private var clipboard = MacClipboardObserver.shared
+    @ObservedObject private var server = ControlSessionServer.shared
 
     @State private var isDropTargeted: Bool = false
     @State private var droppedFilesSummary: String? = nil
@@ -63,7 +64,7 @@ public struct MenuBarPopupView: View {
                         .foregroundStyle(.secondary)
                         .tracking(1.2)
 
-                    if discovery.discoveredDevices.isEmpty {
+                    if discovery.discoveredDevices.isEmpty && server.connectedPeers.isEmpty {
                         HStack(spacing: 10) {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.system(size: 14))
@@ -84,7 +85,12 @@ public struct MenuBarPopupView: View {
                                 .fill(Color.primary.opacity(0.03))
                         )
                     } else {
-                        ForEach(discovery.discoveredDevices) { device in
+                        ForEach(server.connectedPeers) { peer in
+                            ConnectedPeerRowView(peer: peer)
+                        }
+                        ForEach(discovery.discoveredDevices.filter { dev in
+                            !server.connectedPeers.contains { $0.name == dev.name || $0.fingerprint == dev.fingerprint }
+                        }) { device in
                             DeviceRowView(device: device)
                         }
                     }
@@ -242,6 +248,43 @@ struct DeviceRowView: View {
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
+        )
+    }
+}
+
+struct ConnectedPeerRowView: View {
+    @ObservedObject var peer: ConnectedPeer
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(peer.isTrusted ? Color(red: 0.2, green: 0.82, blue: 0.35) : Color(red: 1.0, green: 0.62, blue: 0.04))
+                .frame(width: 8, height: 8)
+
+            Image(systemName: "phone.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(peer.name)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(peer.isTrusted ? "Connected • Clipboard Sync Active ⚡" : "Connecting...")
+                    .font(.system(size: 9))
+                    .foregroundStyle(peer.isTrusted ? Color.secondary : Color.orange)
+            }
+
+            Spacer()
+
+            if peer.isTrusted {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(red: 0.2, green: 0.82, blue: 0.35))
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.06))
         )
     }
 }

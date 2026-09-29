@@ -4,14 +4,19 @@ import CoreImage
 
 /// Floating window controller managing the Pairing modal so it remains visible
 /// while the user scans the QR code from their phone.
-public final class PairingWindowController {
+public final class PairingWindowController: ObservableObject {
     public static let shared = PairingWindowController()
     private var window: NSPanel?
+
+    @Published public private(set) var activePin: String?
 
     private init() {}
 
     /// Present the floating pairing modal.
     public func showPairingWindow() {
+        let initialPin = String(format: "%06d", Int.random(in: 100000...999999))
+        self.activePin = initialPin
+
         if let existing = window {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -38,8 +43,24 @@ public final class PairingWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Update active PIN when user refreshes PIN in modal
+    public func updateActivePin(_ newPin: String) {
+        DispatchQueue.main.async {
+            self.activePin = newPin
+        }
+    }
+
+    /// Invoked when pairing handshake succeeds from remote device
+    public func onPairingSuccess() {
+        DispatchQueue.main.async {
+            NSSound(named: "Glass")?.play()
+            self.closePairingWindow()
+        }
+    }
+
     /// Close and release the floating pairing modal.
     public func closePairingWindow() {
+        activePin = nil
         window?.close()
         window = nil
     }
@@ -48,7 +69,7 @@ public final class PairingWindowController {
 struct PairingModalView: View {
     var onClose: () -> Void
 
-    @State private var pin: String = String(format: "%06d", Int.random(in: 100000...999999))
+    @State private var pin: String = PairingWindowController.shared.activePin ?? String(format: "%06d", Int.random(in: 100000...999999))
     @State private var qrImage: NSImage?
 
     var body: some View {
@@ -131,7 +152,9 @@ struct PairingModalView: View {
     }
 
     private func regeneratePin() {
-        pin = String(format: "%06d", Int.random(in: 100000...999999))
+        let newPin = String(format: "%06d", Int.random(in: 100000...999999))
+        pin = newPin
+        PairingWindowController.shared.updateActivePin(newPin)
         generateQRCode()
     }
 
@@ -140,9 +163,12 @@ struct PairingModalView: View {
         let fingerprint = (try? CryptoManager.shared.getPublicKeyFingerprint()) ?? ""
         let devId = UserDefaults.standard.string(forKey: "com.corda.mac.local_device_id") ?? UUID().uuidString
 
-        // Compact URI format
+        // Compact URI format with host IP for zero-friction direct socket connection
         let encodedName = computerName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Mac"
-        let uriString = "corda://pair?id=\(devId)&name=\(encodedName)&fp=\(fingerprint)&pin=\(pin)"
+        var uriString = "corda://pair?id=\(devId)&name=\(encodedName)&fp=\(fingerprint)&pin=\(pin)"
+        if let hostIP = getLocalIPAddress() {
+            uriString += "&host=\(hostIP)&port=54321"
+        }
 
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
         filter.setValue(Data(uriString.utf8), forKey: "inputMessage")
@@ -161,5 +187,32 @@ struct PairingModalView: View {
         guard pin.count == 6 else { return pin }
         let index3 = pin.index(pin.startIndex, offsetBy: 3)
         return "\(pin[..<index3]) \(pin[index3...])"
+    }
+
+    private func getLocalIPAddress() -> String? {
+        var address: String?
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
+
+        for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
+            let interface = ptr.pointee
+            let addrFamily = interface.ifa_addr.pointee.sa_family
+            if addrFamily == UInt8(AF_INET) {
+                let name = String(cString: interface.ifa_name)
+                if name == "en0" || name == "en1" || name == "bridge0" {
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
+                                &hostname, socklen_t(hostname.count),
+                                nil, socklen_t(0), NI_NUMERICHOST)
+                    let ip = String(cString: hostname)
+                    if !ip.isEmpty && ip != "127.0.0.1" {
+                        address = ip
+                        break
+                    }
+                }
+            }
+        }
+        return address
     }
 }

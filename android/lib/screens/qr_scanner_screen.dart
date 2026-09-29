@@ -65,6 +65,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
     String deviceId = '';
     String fingerprint = '';
     String pin = '';
+    String host = '';
+    int port = 54321;
 
     if (rawData.startsWith('corda://pair')) {
       try {
@@ -73,6 +75,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
         deviceName = uri.queryParameters['name'] ?? 'MacBook';
         fingerprint = uri.queryParameters['fp'] ?? '';
         pin = uri.queryParameters['pin'] ?? '';
+        host = uri.queryParameters['host'] ?? '';
+        port = int.tryParse(uri.queryParameters['port'] ?? '54321') ?? 54321;
       } catch (_) {
         deviceName = rawData;
       }
@@ -85,6 +89,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
       deviceId: deviceId,
       fingerprint: fingerprint,
       pin: pin,
+      host: host,
+      port: port,
     );
   }
 
@@ -93,6 +99,8 @@ class _QRScannerScreenState extends State<QRScannerScreen>
     required String deviceId,
     required String fingerprint,
     required String pin,
+    String host = '',
+    int port = 54321,
   }) {
     showModalBottomSheet(
       context: context,
@@ -217,9 +225,54 @@ class _QRScannerScreenState extends State<QRScannerScreen>
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CordaTheme.mintGreen,
                         ),
-                        onPressed: () {
+                        onPressed: () async {
                           Navigator.of(ctx).pop();
-                          Navigator.of(context).pop(true);
+                          final targetHost = host.isNotEmpty ? host : '127.0.0.1';
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text('Menghubungkan ke $deviceName...'),
+                                ],
+                              ),
+                              duration: const Duration(seconds: 5),
+                            ),
+                          );
+
+                          final result = await PlatformBridge.instance.pairDevice(
+                            host: targetHost,
+                            port: port,
+                            pin: pin,
+                            fingerprint: fingerprint,
+                          );
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            if (result['success'] == true) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: CordaTheme.mintGreen,
+                                  content: Text('Berhasil dipasangkan dengan $deviceName!'),
+                                ),
+                              );
+                              Navigator.of(context).pop(true);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: Colors.redAccent,
+                                  content: Text(result['message']?.toString() ?? 'Pairing gagal'),
+                                ),
+                              );
+                              setState(() => _isProcessingCode = false);
+                            }
+                          }
                         },
                         child: const Text('Konfirmasi & Pasangkan'),
                       ),

@@ -25,6 +25,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+import com.corda.app.accessibility.ClipboardAccessibilityService
+import com.corda.app.network.ControlSocketClient
+import com.corda.app.security.TrustedDeviceStore
+
 class CordaForegroundService : Service() {
 
     companion object {
@@ -38,6 +42,9 @@ class CordaForegroundService : Service() {
 
         var isRunning: Boolean = false
             private set
+
+        var instance: CordaForegroundService? = null
+            private set
     }
 
     private val serviceJob = SupervisorJob()
@@ -48,8 +55,13 @@ class CordaForegroundService : Service() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var isDiscovering = false
 
+    var socketClient: ControlSocketClient? = null
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
+        socketClient = ControlSocketClient(applicationContext)
         Log.i(TAG, "CordaForegroundService created.")
         createNotificationChannel()
         acquireMulticastLock()
@@ -218,6 +230,12 @@ class CordaForegroundService : Service() {
                     lastSeen = System.currentTimeMillis()
                 )
                 CordaEventBus.postDiscoveredDevice(device)
+
+                // If Mac is already trusted, auto-connect immediately
+                if (fingerprint.isNotEmpty() && TrustedDeviceStore(applicationContext).isFingerprintTrusted(fingerprint)) {
+                    Log.i(TAG, "Mac terpercaya '$name' terdeteksi via mDNS. Auto-connecting ke $host:$port...")
+                    socketClient?.autoConnect(host, port)
+                }
             }
         }
 
@@ -231,14 +249,22 @@ class CordaForegroundService : Service() {
     private fun observeClipboardEvents() {
         serviceScope.launch {
             CordaEventBus.clipboardEvents.collect { event ->
-                Log.i(TAG, "ForegroundService menerima teks salinan: '${event.text.take(40)}...' (${event.text.length} chars)")
-                // Di Phase 4, teks ini akan dipancarkan melalui E2EE TLS Socket ke Mac yang terhubung
+                Log.i(TAG, "ForegroundService memancarkan teks salinan ke Mac: '${event.text.take(40)}...'")
+                val hash = ClipboardAccessibilityService.computeSha256(event.text)
+                socketClient?.sendClipboard(event.text, hash)
             }
         }
     }
 
+    fun pairDevice(host: String, port: Int, pin: String, fingerprint: String, callback: (Boolean, String) -> Unit) {
+        val client = socketClient ?: ControlSocketClient(applicationContext).also { socketClient = it }
+        client.connectAndPair(host, port, pin, fingerprint, callback)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        socketClient?.disconnect()
+        instance = null
         isRunning = false
         CordaEventBus.postServiceState(ServiceState(isRunning = false, statusMessage = "Layanan dinonaktifkan"))
 

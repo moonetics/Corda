@@ -141,6 +141,31 @@ class PlatformBridge {
     } catch (_) {}
   }
 
+  Future<Map<String, dynamic>> pairDevice({
+    required String host,
+    required int port,
+    required String pin,
+    required String fingerprint,
+  }) async {
+    try {
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('pairDevice', {
+        'host': host,
+        'port': port,
+        'pin': pin,
+        'fingerprint': fingerprint,
+      });
+      if (res != null) {
+        return {
+          'success': res['success'] as bool? ?? false,
+          'message': res['message'] as String? ?? '',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+    return {'success': false, 'message': 'Gagal menghubungkan ke Mac'};
+  }
+
   Stream<ClipboardEventModel> get clipboardStream {
     _clipboardStream ??= _clipboardEventChannel
         .receiveBroadcastStream()

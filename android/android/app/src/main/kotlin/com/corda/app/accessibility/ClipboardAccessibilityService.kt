@@ -10,6 +10,9 @@ import android.view.accessibility.AccessibilityEvent
 import com.corda.app.events.ClipboardCopiedEvent
 import com.corda.app.events.CordaEventBus
 
+import java.security.MessageDigest
+import java.util.Collections
+
 class ClipboardAccessibilityService : AccessibilityService() {
 
     companion object {
@@ -17,6 +20,25 @@ class ClipboardAccessibilityService : AccessibilityService() {
         private var lastProcessedText: String? = null
         private var lastProcessedTime: Long = 0L
         private const val DEDUPLICATION_WINDOW_MS = 600L
+
+        private val recentRemoteHashes = Collections.synchronizedSet(mutableSetOf<String>())
+
+        /**
+         * Register a hash received from the remote Mac so it won't echo back.
+         */
+        fun registerRemoteHash(hash: String) {
+            recentRemoteHashes.add(hash.lowercase())
+            if (recentRemoteHashes.size > 50) {
+                val first = recentRemoteHashes.firstOrNull()
+                if (first != null) recentRemoteHashes.remove(first)
+            }
+        }
+
+        fun computeSha256(text: String): String {
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(text.toByteArray(Charsets.UTF_8))
+            return digest.joinToString("") { "%02x".format(it) }
+        }
     }
 
     private var clipboardManager: ClipboardManager? = null
@@ -74,6 +96,13 @@ class ClipboardAccessibilityService : AccessibilityService() {
 
             val textItem = clipData.getItemAt(0)?.coerceToText(this)?.toString()
             if (textItem.isNullOrEmpty()) return
+
+            val textHash = computeSha256(textItem).lowercase()
+            if (recentRemoteHashes.contains(textHash)) {
+                Log.d(TAG, "Teks clipboard berasal dari remote sync (hash cocok). Mengabaikan untuk mencegah echo loop.")
+                recentRemoteHashes.remove(textHash)
+                return
+            }
 
             val currentTime = System.currentTimeMillis()
             // Deduplicate: avoid firing multiple events for the same text within window

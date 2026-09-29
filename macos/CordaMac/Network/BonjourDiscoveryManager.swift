@@ -98,6 +98,10 @@ public final class BonjourDiscoveryManager: ObservableObject {
                 }
             }
 
+            nwListener.newConnectionHandler = { connection in
+                ControlSessionServer.shared.handleNewConnection(connection)
+            }
+
             self.listener = nwListener
             nwListener.start(queue: queue)
         } catch {

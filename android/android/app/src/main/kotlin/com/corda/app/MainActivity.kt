@@ -74,6 +74,32 @@ class MainActivity : FlutterActivity() {
                     triggerMicroHaptic()
                     result.success(true)
                 }
+                "pairDevice" -> {
+                    val host = call.argument<String>("host") ?: ""
+                    val port = call.argument<Int>("port") ?: 54321
+                    val pin = call.argument<String>("pin") ?: ""
+                    val fingerprint = call.argument<String>("fingerprint") ?: ""
+
+                    if (host.isEmpty() || pin.isEmpty()) {
+                        result.error("INVALID_ARGS", "Host dan PIN wajib diisi", null)
+                        return@setMethodCallHandler
+                    }
+
+                    val service = CordaForegroundService.instance
+                    if (service != null) {
+                        service.pairDevice(host, port, pin, fingerprint) { success, message ->
+                            if (success) triggerMicroHaptic()
+                            result.success(mapOf("success" to success, "message" to message))
+                        }
+                    } else {
+                        startCordaService()
+                        val client = com.corda.app.network.ControlSocketClient(this)
+                        client.connectAndPair(host, port, pin, fingerprint) { success, message ->
+                            if (success) triggerMicroHaptic()
+                            result.success(mapOf("success" to success, "message" to message))
+                        }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

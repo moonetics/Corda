@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             #if DEBUG
             print("[Corda Clipboard Event] User copied \(text.count) characters. SHA256: \(hash.prefix(8))...")
             #endif
+            ControlSessionServer.shared.broadcastClipboard(text: text, hash: hash)
         }
     }
 

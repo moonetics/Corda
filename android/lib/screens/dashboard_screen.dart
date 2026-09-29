@@ -106,6 +106,125 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  void _showPairWithDiscoveredDeviceDialog(DiscoveredDeviceModel device) {
+    final pinController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.laptop_mac_rounded, color: CordaTheme.aquaPrimary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Pasangkan dengan ${device.name}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Alamat IP: ${device.host}:${device.port}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Masukkan 6-digit PIN yang tampil di jendela Menu Bar Mac Anda:',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pinController,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 6),
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: '000000',
+                  hintStyle: TextStyle(letterSpacing: 6, color: Colors.grey.withValues(alpha: 0.5)),
+                  filled: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const QRScannerScreen()),
+                );
+              },
+              child: const Text('Buka QR Scanner'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final pin = pinController.text.trim();
+                if (pin.length == 6) {
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          Text('Menghubungkan ke ${device.name}...'),
+                        ],
+                      ),
+                      duration: const Duration(seconds: 5),
+                    ),
+                  );
+
+                  final result = await PlatformBridge.instance.pairDevice(
+                    host: device.host,
+                    port: device.port,
+                    pin: pin,
+                    fingerprint: device.fingerprint,
+                  );
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    if (result['success'] == true) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          backgroundColor: CordaTheme.mintGreen,
+                          content: Text('Berhasil dipasangkan dengan ${device.name}!'),
+                        ),
+                      );
+                      _checkHealth();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          backgroundColor: Colors.redAccent,
+                          content: Text(result['message']?.toString() ?? 'Pairing gagal'),
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+              child: const Text('Pasangkan'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -402,9 +521,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                                 onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const QRScannerScreen()),
-                                  );
+                                  _showPairWithDiscoveredDeviceDialog(device);
                                 },
                                 child: const Text('Pair'),
                               ),
