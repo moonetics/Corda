@@ -53,6 +53,9 @@ install-mac: bundle-mac
 	@echo "Installing Corda.app to /Applications..."
 	@rm -rf /Applications/Corda.app
 	@cp -R build/Corda.app /Applications/
+	@touch /Applications/Corda.app
+	@qlmanage -r 2>/dev/null || true
+	@killall Finder 2>/dev/null || true
 	@echo "  [OK] Corda.app installed to /Applications/Corda.app"
 
 run-mac:

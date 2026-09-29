@@ -70,6 +70,12 @@ struct MenuBarStatusIconView: View {
     }
 
     private func loadMenuBarIcon() -> NSImage? {
+        if let mainUrl = Bundle.main.url(forResource: "menubar_icon", withExtension: "png"),
+           let img = NSImage(contentsOf: mainUrl) {
+            img.size = NSSize(width: 18, height: 18)
+            img.isTemplate = true
+            return img
+        }
         #if SWIFT_PACKAGE
         if let url = Bundle.module.url(forResource: "menubar_icon", withExtension: "png"),
            let img = NSImage(contentsOf: url) {
@@ -78,6 +84,15 @@ struct MenuBarStatusIconView: View {
             return img
         }
         #endif
+        if let resPath = Bundle.main.resourcePath {
+            let directPath = (resPath as NSString).appendingPathComponent("menubar_icon.png")
+            if FileManager.default.fileExists(atPath: directPath),
+               let img = NSImage(contentsOfFile: directPath) {
+                img.size = NSSize(width: 18, height: 18)
+                img.isTemplate = true
+                return img
+            }
+        }
         let paths = [
             "macos/CordaMac/Resources/menubar_icon.png",
             "assets/corda_logo_icon.png",
