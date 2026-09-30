@@ -15,7 +15,10 @@
         "HEARTBEAT_PONG",
         "FILE_METADATA_HEADER",
         "FILE_TRANSFER_ABORT",
-        "CLIPBOARD_FILE_ANNOUNCE"
+        "CLIPBOARD_FILE_ANNOUNCE",
+        "OTP_DETECTED",
+        "BATTERY_STATUS",
+        "NOTIFICATION_MIRROR"
       ]
     },
     "timestamp": {
@@ -31,7 +34,10 @@
     { "$ref": "#/definitions/HeartbeatPong" },
     { "$ref": "#/definitions/FileMetadataHeader" },
     { "$ref": "#/definitions/FileTransferAbort" },
-    { "$ref": "#/definitions/ClipboardFileAnnounce" }
+    { "$ref": "#/definitions/ClipboardFileAnnounce" },
+    { "$ref": "#/definitions/OtpDetected" },
+    { "$ref": "#/definitions/BatteryStatus" },
+    { "$ref": "#/definitions/NotificationMirror" }
   ],
   "definitions": {
     "PairRequest": {
@@ -168,7 +174,68 @@
         "device_id": { "type": "string", "format": "uuid" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
+    },
+    "OtpDetected": {
+      "type": "object",
+      "required": ["type", "device_id", "service_name", "code", "expires_in", "timestamp"],
+      "properties": {
+        "type": { "const": "OTP_DETECTED" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "service_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "code": { "type": "string", "pattern": "^[0-9]{4,8}$" },
+        "expires_in": { "type": "integer", "minimum": 10, "maximum": 300 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "BatteryStatus": {
+      "type": "object",
+      "required": ["type", "device_id", "level", "is_charging", "power_source", "timestamp"],
+      "properties": {
+        "type": { "const": "BATTERY_STATUS" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "level": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "is_charging": { "type": "boolean" },
+        "power_source": { "type": "string", "enum": ["battery", "ac", "usb", "wireless"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "NotificationMirror": {
+      "type": "object",
+      "required": ["type", "device_id", "notification_id", "package_name", "app_name", "title", "text", "timestamp"],
+      "properties": {
+        "type": { "const": "NOTIFICATION_MIRROR" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "notification_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "package_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "app_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 256 },
+        "text": { "type": "string", "maxLength": 2048 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "NotificationWhitelistSync": {
+      "type": "object",
+      "required": ["type", "device_id", "master_enabled", "apps", "timestamp"],
+      "properties": {
+        "type": { "const": "NOTIFICATION_WHITELIST_SYNC" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "master_enabled": { "type": "boolean" },
+        "apps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["package_name", "app_name", "is_enabled"],
+            "properties": {
+              "package_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "app_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "is_enabled": { "type": "boolean" }
+            }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   }
 }
+
 

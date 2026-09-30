@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 
 import com.corda.app.accessibility.ClipboardAccessibilityService
 import com.corda.app.network.ControlSocketClient
+import com.corda.app.receivers.BatteryBroadcastReceiver
 import com.corda.app.security.TrustedDeviceStore
 
 class CordaForegroundService : Service() {
@@ -66,6 +67,7 @@ class CordaForegroundService : Service() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var screenReceiver: BroadcastReceiver? = null
+    private var batteryReceiver: BatteryBroadcastReceiver? = null
     private var apIsolationJob: Job? = null
     private var hasDiscoveredAnyPeer = false
 
@@ -122,9 +124,11 @@ class CordaForegroundService : Service() {
         acquireMulticastLock()
         initNsdManager()
         observeClipboardEvents()
+        observeOtpEvents()
         observeTransferEvents()
         registerNetworkCallback()
         registerScreenReceiver()
+        registerBatteryReceiver()
 
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         clipboardManager?.addPrimaryClipChangedListener(primaryClipListener)
@@ -315,10 +319,37 @@ class CordaForegroundService : Service() {
     private fun observeClipboardEvents() {
         serviceScope.launch {
             CordaEventBus.clipboardEvents.collect { event ->
+                // Filter out internal synthetic file/folder labels from remote broadcast
+                if (event.text.startsWith("🖼️ ") || event.text.startsWith("📁 ")) {
+                    Log.d(TAG, "Mengabaikan label berkas internal dari siaran remote socket: '${event.text}'")
+                    return@collect
+                }
                 Log.i(TAG, "ForegroundService memancarkan teks salinan ke Mac: '${event.text.take(40)}...'")
                 val hash = ClipboardAccessibilityService.computeSha256(event.text)
                 socketClient?.sendClipboard(event.text, hash)
             }
+        }
+    }
+
+    private fun observeOtpEvents() {
+        serviceScope.launch {
+            CordaEventBus.otpEvents.collect { event ->
+                Log.i(TAG, "ForegroundService memancarkan OTP ke Mac: [${event.code}] dari '${event.serviceName}'")
+                socketClient?.sendOtpDetected(event.serviceName, event.code, event.expiresIn)
+            }
+        }
+    }
+
+    private fun registerBatteryReceiver() {
+        try {
+            batteryReceiver = BatteryBroadcastReceiver { level, isCharging, powerSource ->
+                socketClient?.sendBatteryStatus(level, isCharging, powerSource)
+            }
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            registerReceiver(batteryReceiver, filter)
+            Log.i(TAG, "BatteryBroadcastReceiver berhasil didaftarkan.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal mendaftarkan BatteryBroadcastReceiver", e)
         }
     }
 
@@ -442,6 +473,13 @@ class CordaForegroundService : Service() {
         try {
             screenReceiver?.let { unregisterReceiver(it) }
         } catch (_: Exception) {}
+
+        if (batteryReceiver != null) {
+            try {
+                unregisterReceiver(batteryReceiver)
+            } catch (_: Exception) {}
+            batteryReceiver = null
+        }
 
         try {
             clipboardManager?.removePrimaryClipChangedListener(primaryClipListener)

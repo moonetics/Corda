@@ -90,6 +90,46 @@ def validate_message(msg: dict, schema: dict) -> None:
         assert isinstance(msg.get("size_bytes"), int) and 1 <= msg["size_bytes"] <= 52428800, "size_bytes must be between 1 and 50MB"
         assert is_valid_sha256(msg.get("sha256", "")), "Invalid sha256 in CLIPBOARD_FILE_ANNOUNCE"
 
+    elif msg_type == "OTP_DETECTED":
+        def_spec = definitions["OtpDetected"]
+        for req in def_spec["required"]:
+            assert req in msg, f"Missing required field {req} in OTP_DETECTED"
+        assert is_valid_uuid(msg["device_id"]), "Invalid device_id UUID"
+        assert re.match(r"^[0-9]{4,8}$", msg["code"]), "Invalid OTP code format"
+        assert 10 <= msg["expires_in"] <= 300, "Invalid expires_in range"
+        # Strict privacy assertion: ensure no raw message body is present!
+        assert "message_text" not in msg, "Privacy violation: message_text found in OTP_DETECTED"
+        assert "full_sms_body" not in msg, "Privacy violation: full_sms_body found in OTP_DETECTED"
+
+    elif msg_type == "BATTERY_STATUS":
+        def_spec = definitions["BatteryStatus"]
+        for req in def_spec["required"]:
+            assert req in msg, f"Missing required field {req} in BATTERY_STATUS"
+        assert is_valid_uuid(msg["device_id"]), "Invalid device_id UUID"
+        assert 0 <= msg["level"] <= 100, "Invalid battery level"
+        assert isinstance(msg["is_charging"], bool), "is_charging must be boolean"
+        assert msg["power_source"] in ["battery", "ac", "usb", "wireless"], "Invalid power source"
+
+    elif msg_type == "NOTIFICATION_MIRROR":
+        required = ["type", "device_id", "notification_id", "package_name", "app_name", "title", "text", "timestamp"]
+        for field in required:
+            assert field in msg, f"Missing required field {field}"
+        assert isinstance(msg["title"], str), "title must be a string"
+        assert isinstance(msg["text"], str), "text must be a string"
+        assert isinstance(msg["package_name"], str), "package_name must be a string"
+        assert isinstance(msg["app_name"], str), "app_name must be a string"
+
+    elif msg_type == "NOTIFICATION_WHITELIST_SYNC":
+        required = ["type", "device_id", "master_enabled", "apps", "timestamp"]
+        for field in required:
+            assert field in msg, f"Missing required field {field}"
+        assert isinstance(msg["master_enabled"], bool), "master_enabled must be boolean"
+        assert isinstance(msg["apps"], list), "apps must be a list"
+        for app in msg["apps"]:
+            assert "package_name" in app and isinstance(app["package_name"], str)
+            assert "app_name" in app and isinstance(app["app_name"], str)
+            assert "is_enabled" in app and isinstance(app["is_enabled"], bool)
+
     else:
         raise ValueError(f"Unknown message type: {msg_type}")
 
@@ -173,6 +213,50 @@ def main():
             "size_bytes": 2048000,
             "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "timestamp": "2026-09-29T14:17:00.000Z"
+        },
+        {
+            "type": "OTP_DETECTED",
+            "device_id": "8899aabb-ccdd-eeff-0011-223344556677",
+            "service_name": "BCA",
+            "code": "492015",
+            "expires_in": 60,
+            "timestamp": "2026-09-30T12:00:00.000Z"
+        },
+        {
+            "type": "BATTERY_STATUS",
+            "device_id": "8899aabb-ccdd-eeff-0011-223344556677",
+            "level": 85,
+            "is_charging": True,
+            "power_source": "ac",
+            "timestamp": "2026-09-30T12:00:05.000Z"
+        },
+        {
+            "type": "NOTIFICATION_MIRROR",
+            "device_id": "8899aabb-ccdd-eeff-0011-223344556677",
+            "notification_id": "notif_1092837",
+            "package_name": "com.whatsapp",
+            "app_name": "WhatsApp",
+            "title": "Budi Santoso",
+            "text": "Besok meeting jam 10 ya di kantor",
+            "timestamp": "2026-09-30T12:00:10.000Z"
+        },
+        {
+            "type": "NOTIFICATION_WHITELIST_SYNC",
+            "device_id": "8899aabb-ccdd-eeff-0011-223344556677",
+            "master_enabled": True,
+            "apps": [
+                {
+                    "package_name": "com.whatsapp",
+                    "app_name": "WhatsApp",
+                    "is_enabled": True
+                },
+                {
+                    "package_name": "org.telegram.messenger",
+                    "app_name": "Telegram",
+                    "is_enabled": True
+                }
+            ],
+            "timestamp": "2026-09-30T12:00:15.000Z"
         }
     ]
 
@@ -181,7 +265,7 @@ def main():
         validate_message(sample, schema)
         print(f"  [OK] Validated {m_type}")
 
-    print("\n✅ All 8 message types validated successfully against protocol definitions!")
+    print(f"\n✅ All {len(sample_messages)} message types validated successfully against protocol definitions!")
 
 if __name__ == "__main__":
     main()

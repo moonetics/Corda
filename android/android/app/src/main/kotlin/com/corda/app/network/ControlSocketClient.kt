@@ -19,7 +19,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import com.corda.app.notifications.NotificationMirrorEngine
+import com.corda.app.receivers.BatteryBroadcastReceiver
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -157,6 +160,10 @@ class ControlSocketClient(private val context: Context) {
                         startReadLoop()
                         startHeartbeatLoop()
 
+                        // Immediately send initial battery status and notification whitelist
+                        sendCurrentBatteryStatus()
+                        sendNotificationWhitelistSync()
+
                         withContext(Dispatchers.Main) {
                             onResult?.invoke(true, "Pairing berhasil!")
                         }
@@ -230,6 +237,10 @@ class ControlSocketClient(private val context: Context) {
 
                 startReadLoop()
                 startHeartbeatLoop()
+
+                // Immediately send initial battery status and notification whitelist
+                sendCurrentBatteryStatus()
+                sendNotificationWhitelistSync()
             } catch (e: Exception) {
                 Log.w(TAG, "Auto-connect ke $host:$port gagal: ${e.message}")
                 disconnect()
@@ -456,6 +467,166 @@ class ControlSocketClient(private val context: Context) {
                 Log.i(TAG, "Berhasil mengirim CLIPBOARD_PAYLOAD ke Mac (${text.length} chars)")
             } catch (e: Exception) {
                 Log.e(TAG, "Gagal mengirim CLIPBOARD_PAYLOAD", e)
+            }
+        }
+    }
+
+    /**
+     * Read current sticky battery status and transmit to Mac.
+     */
+    fun sendCurrentBatteryStatus() {
+        try {
+            val (level, isCharging, powerSource) = BatteryBroadcastReceiver.getCurrentBatteryStatus(context)
+            sendBatteryStatus(level, isCharging, powerSource)
+            Log.i(TAG, "Sinkronisasi baterai awal: $level%, isCharging=$isCharging ($powerSource)")
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal membaca status baterai awal: ${e.message}")
+        }
+    }
+
+    /**
+     * Send notification whitelist settings to Mac so macOS UI updates dynamically.
+     */
+    fun sendNotificationWhitelistSync() {
+        scope.launch {
+            if (!isConnected) return@launch
+            try {
+                val master = NotificationMirrorEngine.isMasterEnabled(context)
+                val apps = NotificationMirrorEngine.getWhitelistedApps(context)
+                val appsArray = JSONArray()
+                for (app in apps) {
+                    val pkg = app["packageName"] as? String ?: continue
+                    val name = app["appName"] as? String ?: pkg
+                    val isEnabled = app["isEnabled"] as? Boolean ?: true
+                    appsArray.put(JSONObject().apply {
+                        put("package_name", pkg)
+                        put("app_name", name)
+                        put("is_enabled", isEnabled)
+                    })
+                }
+
+                val payload = JSONObject().apply {
+                    put("type", "NOTIFICATION_WHITELIST_SYNC")
+                    put("device_id", getLocalDeviceId())
+                    put("master_enabled", master)
+                    put("apps", appsArray)
+                    put("timestamp", getIso8601Timestamp())
+                }
+                writeLine(payload.toString())
+                Log.i(TAG, "Berhasil mengirim NOTIFICATION_WHITELIST_SYNC ke Mac (${appsArray.length()} aplikasi, master=$master)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengirim NOTIFICATION_WHITELIST_SYNC", e)
+            }
+        }
+    }
+
+    /**
+     * Send battery status update to the connected Mac.
+     */
+    fun sendBatteryStatus(level: Int, isCharging: Boolean, powerSource: String) {
+        scope.launch {
+            if (!isConnected) return@launch
+            try {
+                val payload = JSONObject().apply {
+                    put("type", "BATTERY_STATUS")
+                    put("device_id", getLocalDeviceId())
+                    put("level", level)
+                    put("is_charging", isCharging)
+                    put("power_source", powerSource)
+                    put("timestamp", getIso8601Timestamp())
+                }
+                writeLine(payload.toString())
+                Log.i(TAG, "Berhasil mengirim BATTERY_STATUS ke Mac: $level%, charging=$isCharging ($powerSource)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengirim BATTERY_STATUS", e)
+            }
+        }
+    }
+
+    /**
+     * Send detected OTP code to the connected Mac (Privacy: only code and service name, NO raw message!).
+     */
+    fun sendOtpDetected(serviceName: String, code: String, expiresIn: Int = 60) {
+        scope.launch {
+            if (!isConnected) {
+                val host = connectedHost ?: lastConnectedHost
+                val port = connectedPort ?: lastConnectedPort
+                if (host != null && port != null) {
+                    autoConnect(host, port)
+                    var attempts = 0
+                    while (!isConnected && attempts < 15) {
+                        kotlinx.coroutines.delay(100L)
+                        attempts++
+                    }
+                }
+            }
+
+            if (!isConnected) {
+                Log.w(TAG, "Gagal mengirim OTP_DETECTED: Tidak dapat menyambung ke Mac")
+                return@launch
+            }
+
+            try {
+                val payload = JSONObject().apply {
+                    put("type", "OTP_DETECTED")
+                    put("device_id", getLocalDeviceId())
+                    put("service_name", serviceName)
+                    put("code", code)
+                    put("expires_in", expiresIn)
+                    put("timestamp", getIso8601Timestamp())
+                }
+                writeLine(payload.toString())
+                Log.i(TAG, "Berhasil mengirim OTP_DETECTED ke Mac: [$code] dari $serviceName")
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengirim OTP_DETECTED", e)
+            }
+        }
+    }
+
+    /**
+     * Send mirrored notification to the connected Mac.
+     */
+    fun sendNotificationMirror(
+        notificationId: String,
+        packageName: String,
+        appName: String,
+        title: String,
+        text: String
+    ) {
+        scope.launch {
+            if (!isConnected) {
+                val host = connectedHost ?: lastConnectedHost
+                val port = connectedPort ?: lastConnectedPort
+                if (host != null && port != null) {
+                    autoConnect(host, port)
+                    var attempts = 0
+                    while (!isConnected && attempts < 15) {
+                        kotlinx.coroutines.delay(100L)
+                        attempts++
+                    }
+                }
+            }
+
+            if (!isConnected) {
+                Log.w(TAG, "Gagal mengirim NOTIFICATION_MIRROR: Tidak terhubung ke Mac")
+                return@launch
+            }
+
+            try {
+                val payload = JSONObject().apply {
+                    put("type", "NOTIFICATION_MIRROR")
+                    put("device_id", getLocalDeviceId())
+                    put("notification_id", notificationId)
+                    put("package_name", packageName)
+                    put("app_name", appName)
+                    put("title", title)
+                    put("text", text)
+                    put("timestamp", getIso8601Timestamp())
+                }
+                writeLine(payload.toString())
+                Log.i(TAG, "Berhasil memancarkan NOTIFICATION_MIRROR ke Mac: [$appName] $title")
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengirim NOTIFICATION_MIRROR", e)
             }
         }
     }

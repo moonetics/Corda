@@ -5,121 +5,183 @@ import CoreGraphics
 let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let sourceLogoUrl = projectRoot.appendingPathComponent("assets/logo-corda.png")
 
-guard let sourceImage = NSImage(contentsOf: sourceLogoUrl) else {
+guard let sourceImage = NSImage(contentsOf: sourceLogoUrl),
+      let tiffData = sourceImage.tiffRepresentation,
+      let bitmap = NSBitmapImageRep(data: tiffData),
+      let cgSourceLogo = bitmap.cgImage else {
     print("Error: Could not load source logo from \(sourceLogoUrl.path)")
     exit(1)
 }
 
-print("Loaded source logo from \(sourceLogoUrl.path) (\(sourceImage.size.width)x\(sourceImage.size.height))")
+print("Loaded source logo from \(sourceLogoUrl.path) (\(bitmap.pixelsWide)x\(bitmap.pixelsHigh) px)")
 
-// Helper: Save NSImage as PNG
-func savePNG(image: NSImage, to url: URL) throws {
-    guard let tiffData = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: tiffData),
-          let pngData = bitmap.representation(using: .png, properties: [:]) else {
+// Helper: Save CGImage as PNG with exact pixel dimensions
+func saveCGImageAsPNG(_ cgImage: CGImage, to url: URL) throws {
+    let rep = NSBitmapImageRep(cgImage: cgImage)
+    rep.size = NSSize(width: cgImage.width, height: cgImage.height)
+    guard let pngData = rep.representation(using: .png, properties: [:]) else {
         throw NSError(domain: "PNGConversionError", code: 1, userInfo: nil)
     }
     try pngData.write(to: url)
 }
 
-// 1. Copy logo_corda.png to macos Resources and android assets
+// 1. Copy new logo to root assets, macos Resources, and android assets
 let macResourcesDir = projectRoot.appendingPathComponent("macos/CordaMac/Resources")
 let androidAssetsDir = projectRoot.appendingPathComponent("android/assets/images")
 try? FileManager.default.createDirectory(at: macResourcesDir, withIntermediateDirectories: true)
 try? FileManager.default.createDirectory(at: androidAssetsDir, withIntermediateDirectories: true)
 
+let rootLogoTarget = projectRoot.appendingPathComponent("assets/logo-corda.png")
 let macLogoTarget = macResourcesDir.appendingPathComponent("logo_corda.png")
 let androidLogoTarget = androidAssetsDir.appendingPathComponent("logo_corda.png")
 
+try? FileManager.default.removeItem(at: rootLogoTarget)
+try? FileManager.default.copyItem(at: sourceLogoUrl, to: rootLogoTarget)
 try? FileManager.default.removeItem(at: macLogoTarget)
 try? FileManager.default.copyItem(at: sourceLogoUrl, to: macLogoTarget)
 try? FileManager.default.removeItem(at: androidLogoTarget)
 try? FileManager.default.copyItem(at: sourceLogoUrl, to: androidLogoTarget)
-print("  ✓ Copied canonical logo_corda.png to macOS Resources & Android assets")
+print("  ✓ Copied new logo to assets/logo-corda.png, macOS Resources & Android assets")
 
-// 2. Generate macOS Menu Bar Template Icon (18x18 @1x and 36x36 @2x)
-func generateMenuBarIcon(size: CGFloat) -> NSImage {
-    let img = NSImage(size: NSSize(width: size, height: size))
-    img.lockFocus()
-    guard let ctx = NSGraphicsContext.current?.cgContext else {
-        img.unlockFocus()
-        return img
-    }
-    
-    ctx.clear(CGRect(x: 0, y: 0, width: size, height: size))
-    
-    let padding: CGFloat = size > 24 ? 3.0 : 1.5
-    let rect = CGRect(x: padding, y: padding, width: size - 2 * padding, height: size - 2 * padding)
-    
-    // Draw source logo as monochrome silhouette
-    if let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+// 2. Generate macOS Menu Bar Template Icon (22x22 px @1x and 44x44 px @2x)
+func generateMenuBarIcon(pixelSize: Int, padding: CGFloat) -> CGImage? {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: pixelSize,
+        height: pixelSize,
+        bitsPerComponent: 8,
+        bytesPerRow: pixelSize * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    ctx.setAllowsAntialiasing(true)
+    ctx.setShouldAntialias(true)
+    ctx.clear(CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
+
+    let rect = CGRect(
+        x: padding,
+        y: padding,
+        width: CGFloat(pixelSize) - 2 * padding,
+        height: CGFloat(pixelSize) - 2 * padding
+    )
+
+    ctx.saveGState()
+    ctx.clip(to: rect, mask: cgSourceLogo)
+    ctx.setFillColor(NSColor.black.cgColor)
+    ctx.fill(rect)
+    ctx.restoreGState()
+
+    return ctx.makeImage()
+}
+
+if let mb1x = generateMenuBarIcon(pixelSize: 22, padding: 3.5) {
+    try? saveCGImageAsPNG(mb1x, to: macResourcesDir.appendingPathComponent("menubar_icon.png"))
+}
+if let mb2x = generateMenuBarIcon(pixelSize: 44, padding: 7.0) {
+    try? saveCGImageAsPNG(mb2x, to: macResourcesDir.appendingPathComponent("menubar_icon@2x.png"))
+}
+print("  ✓ Generated pure monochrome template menubar_icon.png (22x22 px) and @2x (44x44 px) with refined padding")
+
+// 3. Generate macOS Dark Sonoma Squircle Container Icon
+func renderSquircleAppIcon(size: Int) -> CGImage? {
+    let width = size
+    let height = size
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    ctx.setAllowsAntialiasing(true)
+    ctx.setShouldAntialias(true)
+
+    // Standard Apple squircle grid dimensions
+    let padding = Double(size) * 0.09
+    let squircleRect = CGRect(
+        x: padding,
+        y: padding,
+        width: Double(size) - (padding * 2),
+        height: Double(size) - (padding * 2)
+    )
+    let cornerRadius = squircleRect.width * 0.224
+
+    // Drop shadow under squircle for macOS dock icons
+    if size >= 64 {
         ctx.saveGState()
-        ctx.clip(to: rect, mask: cgImage)
-        ctx.setFillColor(NSColor.black.cgColor)
-        ctx.fill(rect)
+        let shadowColor = CGColor(red: 0, green: 0, blue: 0, alpha: 0.45)
+        ctx.setShadow(offset: CGSize(width: 0, height: -Double(size) * 0.03), blur: Double(size) * 0.06, color: shadowColor)
+        let path = CGPath(roundedRect: squircleRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+        ctx.addPath(path)
+        ctx.setFillColor(CGColor(red: 0.03, green: 0.05, blue: 0.09, alpha: 1.0))
+        ctx.fillPath()
         ctx.restoreGState()
     }
-    
-    img.unlockFocus()
-    img.isTemplate = true
-    return img
-}
 
-let menuBar1x = generateMenuBarIcon(size: 18)
-let menuBar2x = generateMenuBarIcon(size: 36)
-try? savePNG(image: menuBar1x, to: macResourcesDir.appendingPathComponent("menubar_icon.png"))
-try? savePNG(image: menuBar2x, to: macResourcesDir.appendingPathComponent("menubar_icon@2x.png"))
-print("  ✓ Generated pure monochrome template menubar_icon.png (18x18) and @2x (36x36)")
-
-// 3. Generate macOS AppIcon.icns
-func generateMacSquircleIcon(dimension: CGFloat) -> NSImage {
-    let img = NSImage(size: NSSize(width: dimension, height: dimension))
-    img.lockFocus()
-    guard let ctx = NSGraphicsContext.current?.cgContext else {
-        img.unlockFocus()
-        return img
-    }
-    
-    ctx.clear(CGRect(x: 0, y: 0, width: dimension, height: dimension))
-    
-    let cornerRadius = dimension * 0.225
-    let squircleRect = CGRect(x: 0, y: 0, width: dimension, height: dimension)
-    let path = CGPath(roundedRect: squircleRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-    
+    // Clip to squircle
     ctx.saveGState()
-    ctx.addPath(path)
+    let squirclePath = CGPath(roundedRect: squircleRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+    ctx.addPath(squirclePath)
     ctx.clip()
-    
-    let colors = [
-        NSColor(red: 0.086, green: 0.094, blue: 0.114, alpha: 1.0).cgColor,
-        NSColor(red: 0.063, green: 0.071, blue: 0.086, alpha: 1.0).cgColor
+
+    // Background Gradient (Obsidian Navy to Slate Sonoma)
+    let gradColors = [
+        CGColor(red: 0.08, green: 0.12, blue: 0.20, alpha: 1.0),
+        CGColor(red: 0.03, green: 0.05, blue: 0.09, alpha: 1.0)
     ] as CFArray
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.0, 1.0]) {
-        ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: dimension), end: CGPoint(x: 0, y: 0), options: [])
+    let gradLocations: [CGFloat] = [0.0, 1.0]
+    if let gradient = CGGradient(colorsSpace: colorSpace, colors: gradColors, locations: gradLocations) {
+        ctx.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: squircleRect.midX, y: squircleRect.maxY),
+            end: CGPoint(x: squircleRect.midX, y: squircleRect.minY),
+            options: []
+        )
     }
-    
-    let margin = dimension * 0.15
-    let logoRect = CGRect(x: margin, y: margin, width: dimension - 2 * margin, height: dimension - 2 * margin)
-    if let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-        ctx.draw(cgImage, in: logoRect)
+
+    // Draw Corda Logo Mark in the center with breathing margin
+    let logoInset = squircleRect.width * 0.12
+    let logoRect = squircleRect.insetBy(dx: logoInset, dy: logoInset)
+    ctx.draw(cgSourceLogo, in: logoRect)
+
+    // Subtle specular top gloss
+    let glossColors = [
+        CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18),
+        CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.0)
+    ] as CFArray
+    if let glossGradient = CGGradient(colorsSpace: colorSpace, colors: glossColors, locations: [0.0, 0.5]) {
+        ctx.drawLinearGradient(
+            glossGradient,
+            start: CGPoint(x: squircleRect.midX, y: squircleRect.maxY),
+            end: CGPoint(x: squircleRect.midX, y: squircleRect.midY),
+            options: []
+        )
     }
-    
-    ctx.addPath(path)
-    ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.12).cgColor)
-    ctx.setLineWidth(max(1.0, dimension * 0.012))
-    ctx.strokePath()
-    
     ctx.restoreGState()
-    img.unlockFocus()
-    return img
+
+    // Outer subtle border
+    ctx.saveGState()
+    ctx.addPath(squirclePath)
+    ctx.setLineWidth(max(1.0, Double(size) * 0.015))
+    ctx.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18))
+    ctx.strokePath()
+    ctx.restoreGState()
+
+    return ctx.makeImage()
 }
 
+// 4. Generate macOS AppIcon.icns
 let iconsetDir = projectRoot.appendingPathComponent("build/AppIcon.iconset")
 try? FileManager.default.removeItem(at: iconsetDir)
 try? FileManager.default.createDirectory(at: iconsetDir, withIntermediateDirectories: true)
 
-let iconSizes: [(String, CGFloat)] = [
+let iconSizes: [(String, Int)] = [
     ("icon_16x16.png", 16),
     ("icon_16x16@2x.png", 32),
     ("icon_32x32.png", 32),
@@ -133,8 +195,9 @@ let iconSizes: [(String, CGFloat)] = [
 ]
 
 for (name, sz) in iconSizes {
-    let iconImg = generateMacSquircleIcon(dimension: sz)
-    try? savePNG(image: iconImg, to: iconsetDir.appendingPathComponent(name))
+    if let iconCG = renderSquircleAppIcon(size: sz) {
+        try? saveCGImageAsPNG(iconCG, to: iconsetDir.appendingPathComponent(name))
+    }
 }
 
 let icnsOutputUrl = macResourcesDir.appendingPathComponent("AppIcon.icns")
@@ -143,11 +206,61 @@ iconutilTask.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 iconutilTask.arguments = ["-c", "icns", iconsetDir.path, "-o", icnsOutputUrl.path]
 try? iconutilTask.run()
 iconutilTask.waitUntilExit()
-print("  ✓ Generated macOS AppIcon.icns via iconutil")
+print("  ✓ Generated macOS AppIcon.icns via iconutil (Dark Sonoma Squircle)")
 
-// 4. Generate Android Launcher Mipmap Icons
+// 5. Generate Android Launcher Mipmap Icons
+func renderAndroidRoundIcon(size: Int) -> CGImage? {
+    let width = size
+    let height = size
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    ctx.setAllowsAntialiasing(true)
+    ctx.setShouldAntialias(true)
+
+    let center = CGPoint(x: width / 2, y: height / 2)
+    let radius = CGFloat(size) * 0.46
+    let circleRect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+
+    // Clip to circle
+    ctx.saveGState()
+    ctx.addEllipse(in: circleRect)
+    ctx.clip()
+
+    // Background Gradient
+    let gradColors = [
+        CGColor(red: 0.08, green: 0.12, blue: 0.20, alpha: 1.0),
+        CGColor(red: 0.03, green: 0.05, blue: 0.09, alpha: 1.0)
+    ] as CFArray
+    if let gradient = CGGradient(colorsSpace: colorSpace, colors: gradColors, locations: [0.0, 1.0]) {
+        ctx.drawLinearGradient(gradient, start: CGPoint(x: circleRect.midX, y: circleRect.maxY), end: CGPoint(x: circleRect.midX, y: circleRect.minY), options: [])
+    }
+
+    let logoInset = circleRect.width * 0.15
+    let logoRect = circleRect.insetBy(dx: logoInset, dy: logoInset)
+    ctx.draw(cgSourceLogo, in: logoRect)
+    ctx.restoreGState()
+
+    ctx.saveGState()
+    ctx.addEllipse(in: circleRect)
+    ctx.setLineWidth(max(1.0, CGFloat(size) * 0.015))
+    ctx.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.2))
+    ctx.strokePath()
+    ctx.restoreGState()
+
+    return ctx.makeImage()
+}
+
 let androidMipmapRoot = projectRoot.appendingPathComponent("android/android/app/src/main/res")
-let androidSizes: [(String, CGFloat)] = [
+let androidSizes: [(String, Int)] = [
     ("mipmap-mdpi", 48),
     ("mipmap-hdpi", 72),
     ("mipmap-xhdpi", 96),
@@ -158,10 +271,13 @@ let androidSizes: [(String, CGFloat)] = [
 for (folder, sz) in androidSizes {
     let targetDir = androidMipmapRoot.appendingPathComponent(folder)
     try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
-    
-    let squircleIcon = generateMacSquircleIcon(dimension: sz)
-    try? savePNG(image: squircleIcon, to: targetDir.appendingPathComponent("ic_launcher.png"))
-    try? savePNG(image: squircleIcon, to: targetDir.appendingPathComponent("ic_launcher_round.png"))
+
+    if let squircleIcon = renderSquircleAppIcon(size: sz) {
+        try? saveCGImageAsPNG(squircleIcon, to: targetDir.appendingPathComponent("ic_launcher.png"))
+    }
+    if let roundIcon = renderAndroidRoundIcon(size: sz) {
+        try? saveCGImageAsPNG(roundIcon, to: targetDir.appendingPathComponent("ic_launcher_round.png"))
+    }
 }
 print("  ✓ Generated Android launcher mipmap icons (mdpi to xxxhdpi)")
-print("✨ All Clean Sonoma icons successfully created!")
+print("✨ All brand new Corda icons successfully generated and deployed!")

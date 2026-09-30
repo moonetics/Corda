@@ -12,6 +12,9 @@ public final class ConnectedPeer: Identifiable, ObservableObject {
     public let connection: NWConnection
     @Published public var isTrusted: Bool
     @Published public var lastActive: Date
+    @Published public var batteryLevel: Int? = nil
+    @Published public var isCharging: Bool = false
+    @Published public var powerSource: String = "battery"
 
     public init(
         id: String,
@@ -20,7 +23,10 @@ public final class ConnectedPeer: Identifiable, ObservableObject {
         fingerprint: String,
         connection: NWConnection,
         isTrusted: Bool,
-        lastActive: Date = Date()
+        lastActive: Date = Date(),
+        batteryLevel: Int? = nil,
+        isCharging: Bool = false,
+        powerSource: String = "battery"
     ) {
         self.id = id
         self.name = name
@@ -29,6 +35,22 @@ public final class ConnectedPeer: Identifiable, ObservableObject {
         self.connection = connection
         self.isTrusted = isTrusted
         self.lastActive = lastActive
+        self.batteryLevel = batteryLevel
+        self.isCharging = isCharging
+        self.powerSource = powerSource
+    }
+}
+
+public struct MirroredAppInfo: Identifiable, Hashable {
+    public var id: String { packageName }
+    public let packageName: String
+    public let appName: String
+    public let isEnabled: Bool
+
+    public init(packageName: String, appName: String, isEnabled: Bool) {
+        self.packageName = packageName
+        self.appName = appName
+        self.isEnabled = isEnabled
     }
 }
 
@@ -38,6 +60,12 @@ public final class ControlSessionServer: ObservableObject {
     public static let shared = ControlSessionServer()
 
     @Published public private(set) var connectedPeers: [ConnectedPeer] = []
+    @Published public var latestBatteryLevel: Int? = nil
+    @Published public var latestIsCharging: Bool = false
+    @Published public var latestPowerSource: String = "battery"
+    @Published public var whitelistedApps: [MirroredAppInfo] = []
+    @Published public var isNotificationMasterEnabled: Bool = true
+    @Published public var lastWhitelistSyncTime: Date? = nil
 
     private let queue = DispatchQueue(label: "com.corda.mac.control.server", qos: .userInitiated)
     private var peerBuffers: [ObjectIdentifier: Data] = [:]
@@ -147,6 +175,15 @@ public final class ControlSessionServer: ObservableObject {
         }
     }
 
+    /// Disconnect and unregister a connected companion by its fingerprint.
+    public func disconnectPeer(fingerprint: String) {
+        let targets = connectedPeers.filter { $0.fingerprint.caseInsensitiveCompare(fingerprint) == .orderedSame }
+        for p in targets {
+            p.connection.cancel()
+            removeConnection(p.connection)
+        }
+    }
+
     // MARK: - NDJSON Framing & Parsing
 
     private func receiveNextChunk(from connection: NWConnection, peer: ConnectedPeer) {
@@ -227,9 +264,97 @@ public final class ControlSessionServer: ObservableObject {
             FileStreamingManager.shared.prepareIncomingClipboardTransfer(metadata: jsonObject)
         case "HEARTBEAT_PING":
             handleHeartbeatPing(jsonObject, from: connection, peer: peer)
+        case "BATTERY_STATUS":
+            handleBatteryStatus(jsonObject, from: connection, peer: peer)
+        case "OTP_DETECTED":
+            handleOtpDetected(jsonObject, from: connection, peer: peer)
+        case "NOTIFICATION_MIRROR":
+            handleNotificationMirror(jsonObject, from: connection, peer: peer)
+        case "NOTIFICATION_WHITELIST_SYNC":
+            handleNotificationWhitelistSync(jsonObject, from: connection, peer: peer)
         default:
             #if DEBUG
             print("[ControlServer] Received unhandled message type: \(type)")
+            #endif
+        }
+    }
+
+    // MARK: - Battery & OTP Message Handling
+
+    private func handleBatteryStatus(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
+        guard let level = json["level"] as? Int,
+              let isCharging = json["is_charging"] as? Bool else { return }
+        let powerSource = (json["power_source"] as? String) ?? (isCharging ? "ac" : "battery")
+
+        DispatchQueue.main.async {
+            peer.batteryLevel = level
+            peer.isCharging = isCharging
+            peer.powerSource = powerSource
+
+            if peer.isTrusted {
+                self.latestBatteryLevel = level
+                self.latestIsCharging = isCharging
+                self.latestPowerSource = powerSource
+            }
+        }
+
+        if peer.isTrusted {
+            OtpNotificationManager.shared.checkBatteryThresholds(
+                level: level,
+                isCharging: isCharging,
+                deviceName: peer.name
+            )
+        }
+    }
+
+    private func handleOtpDetected(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
+        guard peer.isTrusted,
+              let code = json["code"] as? String,
+              let serviceName = json["service_name"] as? String else { return }
+        let expiresIn = (json["expires_in"] as? Int) ?? 60
+
+        OtpNotificationManager.shared.showOtpNotification(
+            serviceName: serviceName,
+            code: code,
+            expiresIn: expiresIn
+        )
+    }
+
+    private func handleNotificationMirror(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
+        guard peer.isTrusted,
+              let notificationId = json["notification_id"] as? String,
+              let packageName = json["package_name"] as? String,
+              let appName = json["app_name"] as? String else { return }
+        let title = (json["title"] as? String) ?? ""
+        let text = (json["text"] as? String) ?? ""
+
+        OtpNotificationManager.shared.showNotificationMirror(
+            notificationId: notificationId,
+            packageName: packageName,
+            appName: appName,
+            title: title,
+            text: text
+        )
+    }
+
+    private func handleNotificationWhitelistSync(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
+        guard peer.isTrusted else { return }
+        let masterEnabled = (json["master_enabled"] as? Bool) ?? true
+        let rawApps = (json["apps"] as? [[String: Any]]) ?? []
+
+        let apps: [MirroredAppInfo] = rawApps.compactMap { item in
+            guard let pkg = item["package_name"] as? String, !pkg.isEmpty else { return nil }
+            let name = (item["app_name"] as? String) ?? pkg
+            let enabled = (item["is_enabled"] as? Bool) ?? true
+            return MirroredAppInfo(packageName: pkg, appName: name, isEnabled: enabled)
+        }
+
+        DispatchQueue.main.async {
+            self.isNotificationMasterEnabled = masterEnabled
+            self.whitelistedApps = apps
+            self.lastWhitelistSyncTime = Date()
+            #if DEBUG
+            print("[ControlServer] Synced \(apps.count) whitelisted apps from \(peer.name)")
             #endif
         }
     }

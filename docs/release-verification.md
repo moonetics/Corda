@@ -129,3 +129,159 @@ Berdasarkan seluruh hasil pengujian di atas, proyek **Corda Version 1.0.0** diny
 *Ditandatangani oleh:*  
 **Lead QA & Release Architect — Corda Engineering Team**  
 *29 September 2026*
+
+---
+
+## 7. Hasil Verifikasi Fitur Phase 13 (v1.2.0 Productivity & Polish)
+
+### 7.1. Shared Protocol Schema (`NOTIFICATION_MIRROR`)
+- **Perintah Uji**: `make test-protocol`
+- **Hasil**: **11/11 schemas pass** (termasuk validasi schema `NOTIFICATION_MIRROR`, `OTP_DETECTED`, dan `BATTERY_STATUS`).
+
+### 7.2. Android Native Notification Engine & Source-Side Whitelist
+- **Modul**: `NotificationMirrorEngine.kt`, `ClipboardAccessibilityService.kt`, `ControlSocketClient.kt`, `settings_tab.dart`.
+- **Hasil Verifikasi**:
+  - Source-side whitelist filtering aktif untuk 10 aplikasi default: WhatsApp, Telegram, Tokopedia, Shopee, BCA, Mandiri, BRI, BNI, Grab, Gojek.
+  - Master toggle switch dan switch per-aplikasi tersambung via MethodChannel.
+  - Anti-duplikasi: Deteksi OTP oleh `OtpDetector` diprioritaskan dan diabaikan dari alur mirror; deduplikasi hash LRU 5 detik mencegah spam notifikasi identik.
+  - `flutter analyze`: **0 issues found**.
+  - `compileDebugKotlin`: **BUILD SUCCESSFUL**.
+  - `flutter build apk --debug`: APK berhasil dibuat di `build/Corda-Android.apk`.
+
+### 7.3. macOS Pure Monochrome Battery Icon
+- **Modul**: `BatteryCapsuleIconView` di `CordaMacApp.swift`.
+- **Hasil Verifikasi**:
+  - Emoji kuning `⚡` telah dieliminasi 100%.
+  - Susunan status bar: Persentase terlebih dahulu lalu kapsul baterai horizontal (`84% [Capsule]`).
+  - Kapsul vector horizontal monokrom putih bersih template (`Color.primary`) dengan fill bar proporsional dan glyph petir cutout monokrom saat charging, selaras dengan Apple macOS Sequoia Menu Bar.
+
+### 7.4. macOS Invisible & Instant Screen Edge Dropzone
+- **Modul**: `ScreenEdgeDropzoneWindow.swift`.
+- **Hasil Verifikasi**:
+  - 100% invisible saat idle (opacity 0, tidak ada bilah abu-abu di desktop).
+  - Zona sensor diperluas menjadi 24px di tepi kanan monitor.
+  - `hitTest(_:) -> nil` saat tidak drag berkas: klik mouse biasa pada scrollbar atau tombol tepi peramban tidak pernah terhalang.
+  - Animasi luncur keluar instan 0.15s ease-out saat drag berkas `.fileURL`.
+
+### 7.5. macOS Native Notification Mirroring & Privacy Toggle
+- **Modul**: `OtpNotificationManager.swift`, `ControlSessionServer.swift`, `MenuBarPopupView.swift`.
+- **Hasil Verifikasi**:
+  - Banner native `UNUserNotificationCenter` muncul untuk paket `NOTIFICATION_MIRROR`.
+  - Toggle *"Sembunyikan Cuplikan (Hide Preview)"* di pengaturan Mac menyamarkan isi pesan menjadi *"Pesan Baru Diterima"*.
+  - `swift build -c release`: **BUILD SUCCESSFUL**.
+  - Bundle aplikasi `/Applications/Corda.app` terpasang dan berjalan aktif.
+
+---
+
+## 8. Hasil Verifikasi Fitur Phase 14 (macOS Sonoma Windowed App & Clean Popover)
+
+### 8.1. Jendela Utama Sonoma (`MainWindowController.swift` & `SonomaMainWindowView.swift`)
+- **Hasil Verifikasi**:
+  - Jendela mandiri modern Sonoma `NavigationSplitView` berukuran 840 × 540 pt (min 740 × 480 pt) berjalan stabil dengan frosted sidebar.
+  - 5 tab fungsional berdesain Apple Continuity English:
+    1. 📱 **Devices**: Kartu perangkat aktif + live battery capsule + pairing modal QR + unpair.
+    2. 📁 **Transfers**: Active transfer banner + dropzone card besar + download directory setting.
+    3. 🔔 **Notifications**: Master toggle + filter whitelist apps + privacy hide preview toggle.
+    4. 📋 **Clipboard**: Status real-time universal clipboard + preview teks terakhir + tombol salin ulang.
+    5. ⚙️ **Settings**: Pemilih lokasi download + switch fitur continuity & dropzone.
+    - Footer Sidebar: Kapasitas disk Downloads (`Used • Free`) + security badge.
+
+### 8.2. Ramping Popover Menu Bar (`MenuBarPopupView.swift`)
+- **Hasil Verifikasi**:
+  - Ukuran popover dirampingkan menjadi Mini Popover 260 × 180 pt ala Purge.
+  - Menampilkan status ringkas perangkat terhubung + baterai live capsule.
+  - Aksi instan: *"Open Corda..."* (`⌘O`), *"Send Files..."* (`⌘S`), *"Settings..."* (`⌘,`), dan *"Quit Corda"*.
+  - Bebas dari form pengaturan besar sehingga header tidak pernah terpotong atau sempit.
+
+### 8.3. Siklus Hidup Jendela Hibrid Dinamis & Pintasan Keyboard
+- **Hasil Verifikasi**:
+  - Mode aktivasi hibrid dinamis: Icon Corda muncul di Dock dan switcher `Cmd+Tab` saat jendela utama terbuka, dan otomatis lenyap dari Dock saat jendela ditutup (`Cmd+W` / tombol merah).
+  - Background sync, socket TLS, dropzone, dan item menu bar tetap 100% aktif saat jendela ditutup.
+  - Pintasan `Cmd+,` dan `Cmd+O` membuka jendela aplikasi seketika.
+
+---
+
+## 9. Hasil Verifikasi Pengujian Phase 15 (Menu Bar Polish, Charging Bolt & Universal Android Whitelist)
+
+### 9.1. macOS Menu Bar Popover Transfer Banner Completion
+- **Hasil Verifikasi**:
+  - Banner transfer aktif pada popover menu bar beralih dari spinner loading ke icon centang hijau (`checkmark.circle.fill`) saat transfer mencapai 100%.
+  - Teks berubah dari kecepatan transfer menjadi `100% • Selesai` dengan warna aksen sukses.
+  - Banner transfer otomatis menghilang dengan mulus setelah 4.0 detik tanpa intervensi manual pengguna.
+
+### 9.2. macOS Menu Bar Status Item Charging Indicator
+- **Hasil Verifikasi**:
+  - Glitch clipping kapsul baterai pada menu bar item dieliminasi.
+  - Digantikan dengan format resmi ala Apple Continuity: `[Icon Corda] ⚡ [Level]%` saat mengecas.
+  - Simbol petir `bolt.fill` ditampilkan dalam warna putih monokrom murni (`Color.primary`) yang menyatu dengan status bar macOS.
+  - Saat tidak mengecas, tampil format bersih `[Icon Corda] [Level]%`.
+
+### 9.3. Android Version Alignment
+- **Hasil Verifikasi**:
+  - `pubspec.yaml` diperbarui ke `version: 1.2.0+2`.
+  - Teks footer di tab Pengaturan Android diperbarui menjadi `v1.2.0 • Apple Continuity for Android`.
+
+### 9.4. Universal Android Notification Whitelist Engine & App Picker
+- **Hasil Verifikasi**:
+  - Daftar whitelist notifikasi kini **default kosong** dan tidak lagi terbatas pada 10 aplikasi default.
+  - Tampilan empty state informatif saat belum ada aplikasi yang di-whitelist.
+  - Tombol `+ Tambah Aplikasi` membuka Modal Bottom Sheet App Picker yang menampilkan seluruh aplikasi pengguna yang terpasang di HP (via `PackageManager` launcher query).
+  - Dilengkapi fitur *live search* instan dan tombol hapus (*trash icon*) untuk mengeluarkan aplikasi dari daftar.
+  - Hanya notifikasi dari aplikasi yang aktif di-whitelist yang dikirimkan melalui socket TLS ke Mac.
+
+---
+
+## 10. Hasil Verifikasi Pengujian Phase 16 (Android Full Package Visibility & Native Squircle App Icons)
+
+### 10.1. Android 11+ Package Visibility Unlocked
+- **Masalah Sebelumnya**: Pada Android 11+ (API 30+), sistem menerapkan pembatasan visibilitas paket ketat sehingga aplikasi pihak ketiga (seperti WhatsApp, Telegram, Tokopedia, Shopee, BCA Mobile) tersembunyi dari query launcher `Intent.ACTION_MAIN`.
+- **Solusi**: Penambahan izin `<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />` pada `AndroidManifest.xml`.
+- **Hasil Verifikasi**:
+  - Seluruh aplikasi pihak ketiga milik pengguna (non-sistem) terdeteksi 100% dan dapat dicari secara instan melalui kolom pencarian di App Picker.
+
+### 10.2. Native High-Resolution Icon Extraction via Background Coroutines
+- **Solusi Teknis**:
+  - Implementasi fungsi `drawableToByteArray` di `MainActivity.kt` yang mengkomposisikan Android `Drawable` (termasuk `AdaptiveIconDrawable`, `BitmapDrawable`, dan vector drawables) menjadi canvas bitmap 96×96 ARGB_8888 dan mengompresinya menjadi PNG byte array.
+  - Ekstraksi dijalankan pada `CoroutineScope(Dispatchers.IO)` dan dikembalikan melalui `MethodChannel` binary byte payload (`ByteArray` / `Uint8List`).
+- **Hasil Verifikasi**:
+  - Serialisasi icon ~100+ aplikasi berjalan asinkron di background thread tanpa frame drop (60 FPS stabil) pada UI Flutter.
+  - Data icon disematkan baik saat query aplikasi (`getInstalledApps`) maupun saat query status whitelist tersimpan (`getNotificationSettings`).
+
+### 10.3. Modern 8dp Squircle Design System
+- **Solusi Visual**:
+  - Ikon aplikasi di whitelist card (32×32) dan app picker modal (36×36) dibungkus dengan `ClipRRect(borderRadius: BorderRadius.circular(8))` menghasilkan bentuk squircle rounded corner modern yang konsisten.
+  - Fallback avatar huruf awal otomatis aktif jika aplikasi tidak memiliki ikon native.
+- **Hasil Verifikasi**:
+  - Tampilan visual selaras dengan tema gelap Corda Sonoma.
+  - `flutter analyze`: 0 issues found!
+  - `compileDebugKotlin`: Berhasil tanpa warning/error.
+  - Build APK (`make bundle-android`): Sukses menghasilkan `build/Corda-Android.apk`.
+
+---
+
+## 11. Hasil Verifikasi Pengujian Phase 17 (Notification Whitelist Live Sync & Menu Bar Charging Bolt Fix)
+
+### 11.1. Dynamic Real-Time Whitelist Synchronization
+- **Masalah Sebelumnya**: Tab *Notifications* pada aplikasi utama macOS (`SonomaMainWindowView.swift`) masih menampilkan daftar statis hardcoded (*"WhatsApp, Telegram, Tokopedia, Shopee..."*).
+- **Solusi**:
+  - Menambahkan skema protokol resmi `NOTIFICATION_WHITELIST_SYNC` (`type`, `device_id`, `master_enabled`, `apps`, `timestamp`).
+  - Android mengirimkan paket `NOTIFICATION_WHITELIST_SYNC` secara otomatis begitu soket control channel tersambung, serta setiap kali ada perubahan pada toggle atau penambahan/penghapusan aplikasi di whitelist HP.
+  - Di macOS, daftar statis dihapus dan digantikan dengan data dinamis `server.whitelistedApps`.
+- **Hasil Verifikasi**:
+  - Header sinkronisasi menampilkan status dinamis: *"Synced from [Device Name] • [Count] active"*.
+  - Menampilkan *Empty State* yang ramah pengguna bila belum ada aplikasi yang di-whitelist di ponsel.
+  - Menampilkan grid kartu aplikasi asli dari ponsel dengan badge hijau *"Active"* / abu-abu *"Paused"*.
+
+### 11.2. Menu Bar Charging Bolt Indicator Fix
+- **Masalah Sebelumnya**: Menu bar tidak menampilkan ikon petir saat ponsel Android dicolokkan ke charger.
+- **Solusi**:
+  - Di Android `BatteryBroadcastReceiver.kt`, deteksi charging ditingkatkan agar membaca `EXTRA_PLUGGED > 0` (AC, USB, Wireless) selain `STATUS_CHARGING`.
+  - Menambahkan helper `getCurrentBatteryStatus(context)` yang membaca *sticky intent* `ACTION_BATTERY_CHANGED` segera saat soket tersambung (`sendCurrentBatteryStatus`), sehingga status pengisian daya diketahui seketika tanpa harus menunggu interval broadcast.
+  - Di macOS `MenuBarStatusIconView`, simbol petir monokrom `bolt.fill` (`Color.primary`) aktif sejajar persentase baterai saat `latestIsCharging == true`.
+- **Hasil Verifikasi**:
+  - Status item menu bar menampilkan format resmi `[Icon Corda] ⚡ [Level]%` saat charging.
+  - Kompilasi `swift build -c release` dan pemasangan ke `/Applications/Corda.app` berhasil 100%.
+  - Aplikasi macOS lama dihentikan dan versi terbaru berhasil diluncurkan.
+
+
+

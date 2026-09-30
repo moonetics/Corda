@@ -50,6 +50,14 @@ public final class MacClipboardObserver: ObservableObject {
     /// Write text received from a remote Android device into NSPasteboard
     /// while registering its hash to prevent echoing back.
     public func writeRemoteText(_ text: String) {
+        // Discard any synthetic file/folder preview labels
+        if text.hasPrefix("🖼️ ") || text.hasPrefix("📁 ") {
+            #if DEBUG
+            print("[Corda Clipboard] Discarding synthetic file label from remote text write: \(text)")
+            #endif
+            return
+        }
+
         let hash = computeHash(for: text)
         recentHashes.insert(hash)
 
@@ -108,14 +116,20 @@ public final class MacClipboardObserver: ObservableObject {
 
         let pasteboard = NSPasteboard.general
 
-        // 1. Check for File URL copy in Finder (<= 50MB)
+        // 1. Check for File URL copy in Finder
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
            let firstURL = urls.first, firstURL.isFileURL {
             let path = firstURL.path
             var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue {
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-                   let fileSize = attrs[.size] as? Int64, fileSize > 0 && fileSize <= Self.maxClipboardFileSize {
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir) {
+                if isDir.boolValue {
+                    // It's a directory/folder: preserve native pasteboard without falling back to plain text
+                    #if DEBUG
+                    print("[Corda Clipboard] Directory copy detected: \(firstURL.lastPathComponent). Skipping plain text fallback.")
+                    #endif
+                    return
+                } else if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+                          let fileSize = attrs[.size] as? Int64, fileSize > 0 && fileSize <= Self.maxClipboardFileSize {
                     let hash = computeFileHash(for: firstURL).lowercased()
                     if recentHashes.contains(hash) {
                         recentHashes.remove(hash)
@@ -129,8 +143,20 @@ public final class MacClipboardObserver: ObservableObject {
                     }
                     onClipboardFileChanged?(firstURL, mimeType, fileSize, hash)
                     return
+                } else {
+                    // File > 50MB: preserve native pasteboard without falling back to plain text
+                    #if DEBUG
+                    print("[Corda Clipboard] Large file copy detected (> 50MB). Skipping plain text fallback.")
+                    #endif
+                    return
                 }
             }
+        }
+
+        // Extra safeguard: if pasteboard types explicitly declare file URLs, NEVER fall through to plain text
+        if pasteboard.types?.contains(.fileURL) == true ||
+           pasteboard.types?.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) == true {
+            return
         }
 
         // 2. Check for Direct Image copy (Preview, Browser, Screenshot, etc.) (<= 50MB)

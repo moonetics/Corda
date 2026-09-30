@@ -4,7 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -16,6 +18,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.corda.app.accessibility.ClipboardAccessibilityService
 import com.corda.app.events.CordaEventBus
+import com.corda.app.notifications.NotificationMirrorEngine
 import com.corda.app.services.CordaForegroundService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -25,6 +28,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MainActivity : FlutterActivity() {
@@ -35,6 +43,8 @@ class MainActivity : FlutterActivity() {
         private const val DISCOVERY_EVENT_CHANNEL = "com.corda.app/discovery_events"
         private const val TRANSFER_EVENT_CHANNEL = "com.corda.app/transfer_events"
         private const val ISOLATION_EVENT_CHANNEL = "com.corda.app/isolation_events"
+        private const val BATTERY_EVENT_CHANNEL = "com.corda.app/battery_events"
+        private const val OTP_EVENT_CHANNEL = "com.corda.app/otp_events"
         private const val FILE_PICKER_REQUEST_CODE = 9001
     }
 
@@ -42,6 +52,8 @@ class MainActivity : FlutterActivity() {
     private var discoveryJob: Job? = null
     private var transferJob: Job? = null
     private var isolationJob: Job? = null
+    private var batteryJob: Job? = null
+    private var otpJob: Job? = null
     private var pendingFilePickerResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -58,6 +70,15 @@ class MainActivity : FlutterActivity() {
                         "overlay" to Settings.canDrawOverlays(this)
                     )
                     result.success(status)
+                }
+                "getBatteryStatus" -> {
+                    val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                    val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                    val pct = if (level >= 0 && scale > 0) ((level.toFloat() / scale.toFloat()) * 100).toInt() else 100
+                    val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+                    val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+                    result.success(mapOf("level" to pct, "isCharging" to isCharging))
                 }
                 "openOverlaySettings" -> {
                     openOverlaySettings()
@@ -182,6 +203,105 @@ class MainActivity : FlutterActivity() {
                         result.error("PICKER_ERROR", e.message, null)
                     }
                 }
+                "getNotificationSettings" -> {
+                    val master = NotificationMirrorEngine.isMasterEnabled(this)
+                    val apps = NotificationMirrorEngine.getWhitelistedApps(this)
+                    val pm = packageManager
+                    val appsWithIcons = apps.map { app ->
+                        val pkg = app["packageName"] as? String ?: ""
+                        val iconBytes = try {
+                            val drawable = pm.getApplicationIcon(pkg)
+                            drawableToByteArray(drawable)
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val map = app.toMutableMap()
+                        if (iconBytes != null) {
+                            map["iconBytes"] = iconBytes
+                        }
+                        map
+                    }
+                    result.success(
+                        mapOf(
+                            "masterEnabled" to master,
+                            "apps" to appsWithIcons
+                        )
+                    )
+                }
+                "getInstalledApps" -> {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val pm = packageManager
+                            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                            }
+                            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+                            val list = resolveInfos.mapNotNull { ri ->
+                                val pkg = ri.activityInfo.packageName
+                                if (pkg == packageName) return@mapNotNull null
+                                val appName = ri.loadLabel(pm).toString()
+                                val iconBytes = try {
+                                    val drawable = ri.loadIcon(pm)
+                                    drawableToByteArray(drawable)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                mapOf(
+                                    "packageName" to pkg,
+                                    "appName" to appName,
+                                    "iconBytes" to iconBytes
+                                )
+                            }.distinctBy { it["packageName"] }
+                             .sortedBy { (it["appName"] as String).lowercase() }
+
+                            withContext(Dispatchers.Main) {
+                                result.success(list)
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                result.error("APP_QUERY_ERROR", e.message, null)
+                            }
+                        }
+                    }
+                }
+                "addNotificationPackage" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    val appName = call.argument<String>("appName") ?: ""
+                    if (pkg.isNotEmpty()) {
+                        NotificationMirrorEngine.addWhitelistedApp(this, pkg, appName)
+                        CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                    }
+                }
+                "removeNotificationPackage" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    if (pkg.isNotEmpty()) {
+                        NotificationMirrorEngine.removeWhitelistedApp(this, pkg)
+                        CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                    }
+                }
+                "setNotificationMasterEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    NotificationMirrorEngine.setMasterEnabled(this, enabled)
+                    CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                    result.success(true)
+                }
+                "setNotificationPackageAllowed" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    val allowed = call.argument<Boolean>("allowed") ?: true
+                    if (pkg.isNotEmpty()) {
+                        NotificationMirrorEngine.setPackageAllowed(this, pkg, allowed)
+                        CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -285,6 +405,58 @@ class MainActivity : FlutterActivity() {
                 override fun onCancel(arguments: Any?) {
                     isolationJob?.cancel()
                     isolationJob = null
+                }
+            }
+        )
+
+        // Battery EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    batteryJob?.cancel()
+                    batteryJob = CoroutineScope(Dispatchers.Main).launch {
+                        CordaEventBus.batteryEvents.collect { event ->
+                            events?.success(
+                                mapOf(
+                                    "level" to event.level,
+                                    "isCharging" to event.isCharging,
+                                    "powerSource" to event.powerSource,
+                                    "timestamp" to event.timestamp
+                                )
+                            )
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    batteryJob?.cancel()
+                    batteryJob = null
+                }
+            }
+        )
+
+        // OTP EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, OTP_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    otpJob?.cancel()
+                    otpJob = CoroutineScope(Dispatchers.Main).launch {
+                        CordaEventBus.otpEvents.collect { event ->
+                            events?.success(
+                                mapOf(
+                                    "serviceName" to event.serviceName,
+                                    "code" to event.code,
+                                    "expiresIn" to event.expiresIn,
+                                    "timestamp" to event.timestamp
+                                )
+                            )
+                        }
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    otpJob?.cancel()
+                    otpJob = null
                 }
             }
         )
@@ -448,6 +620,22 @@ class MainActivity : FlutterActivity() {
             }
         }
         return name ?: uri.lastPathSegment
+    }
+
+    private fun drawableToByteArray(drawable: Drawable): ByteArray? {
+        return try {
+            val width = 96
+            val height = 96
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            stream.toByteArray()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun onDestroy() {

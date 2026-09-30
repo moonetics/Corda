@@ -45,6 +45,20 @@ data class ApIsolationEvent(
     val isSuspected: Boolean
 )
 
+data class BatteryStatusEvent(
+    val level: Int,
+    val isCharging: Boolean,
+    val powerSource: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class OtpDetectedEvent(
+    val serviceName: String,
+    val code: String,
+    val expiresIn: Int = 60,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 /**
  * Thread-safe Reactive Event Bus linking Android native services
  * (ClipboardAccessibilityService, CordaForegroundService, and MainActivity).
@@ -58,6 +72,20 @@ object CordaEventBus {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val clipboardEvents: SharedFlow<ClipboardCopiedEvent> = _clipboardEvents.asSharedFlow()
+
+    private val _batteryEvents = MutableSharedFlow<BatteryStatusEvent>(
+        replay = 1,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val batteryEvents: SharedFlow<BatteryStatusEvent> = _batteryEvents.asSharedFlow()
+
+    private val _otpEvents = MutableSharedFlow<OtpDetectedEvent>(
+        replay = 1,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val otpEvents: SharedFlow<OtpDetectedEvent> = _otpEvents.asSharedFlow()
 
     private val _discoveredDevices = MutableSharedFlow<DiscoveredDevice>(
         replay = 1,
@@ -90,6 +118,18 @@ object CordaEventBus {
     fun postClipboardEvent(event: ClipboardCopiedEvent) {
         scope.launch {
             _clipboardEvents.emit(event)
+        }
+    }
+
+    fun postBatteryStatus(event: BatteryStatusEvent) {
+        scope.launch {
+            _batteryEvents.emit(event)
+        }
+    }
+
+    fun postOtpDetected(event: OtpDetectedEvent) {
+        scope.launch {
+            _otpEvents.emit(event)
         }
     }
 

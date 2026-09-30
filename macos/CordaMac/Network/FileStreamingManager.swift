@@ -392,7 +392,9 @@ public final class FileStreamingManager: ObservableObject {
         let currentFileName = (currentFileIndex < files.count) ? (files[currentFileIndex]["name"] as? String ?? "File") : "Selesai"
         let fraction = min(1.0, Double(currentTransferTransferredBytes) / Double(max(1, totalBytes)))
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let completed = fraction >= 1.0
             self.activeTransfer = ActiveTransferProgress(
                 id: metadata["transfer_id"] as? String ?? "",
                 direction: "incoming",
@@ -403,8 +405,20 @@ public final class FileStreamingManager: ObservableObject {
                 transferredBytes: self.currentTransferTransferredBytes,
                 progressFraction: fraction,
                 speedMBs: speedMBs,
-                isCompleted: fraction >= 1.0
+                isCompleted: completed
             )
+            if completed {
+                self.scheduleActiveTransferAutoDismiss()
+            }
+        }
+    }
+
+    private func scheduleActiveTransferAutoDismiss() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            guard let self = self else { return }
+            if let cur = self.activeTransfer, cur.isCompleted {
+                self.activeTransfer = nil
+            }
         }
     }
 
@@ -436,6 +450,7 @@ public final class FileStreamingManager: ObservableObject {
                     speedMBs: 0.0,
                     isCompleted: true
                 )
+                self.scheduleActiveTransferAutoDismiss()
             }
         }
     }
@@ -495,6 +510,19 @@ public final class FileStreamingManager: ObservableObject {
         queue.async {
             self.executeSendFiles(urls: urls, to: peer)
         }
+    }
+
+    /// Convenience method to beam files to the first active trusted Android peer.
+    @discardableResult
+    public func sendFilesToConnectedPeer(urls: [URL]) -> Bool {
+        guard let peer = ControlSessionServer.shared.connectedPeers.first(where: { $0.isTrusted }) else {
+            #if DEBUG
+            print("[FileStreamingManager] No active trusted Android peer connected to send files.")
+            #endif
+            return false
+        }
+        sendFiles(urls: urls, to: peer)
+        return true
     }
 
     private func executeSendFiles(urls: [URL], to peer: ConnectedPeer) {
@@ -665,7 +693,8 @@ public final class FileStreamingManager: ObservableObject {
         )
         connection.send(content: transferCompleteHeader, completion: .idempotent)
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             NSSound(named: "Glass")?.play()
             self.activeTransfer = ActiveTransferProgress(
                 id: pending.transferId.uuidString,
@@ -679,6 +708,7 @@ public final class FileStreamingManager: ObservableObject {
                 speedMBs: 0.0,
                 isCompleted: true
             )
+            self.scheduleActiveTransferAutoDismiss()
         }
     }
 

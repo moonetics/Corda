@@ -119,6 +119,52 @@ class TransferEventModel {
   }
 }
 
+class BatteryStatusModel {
+  final int level;
+  final bool isCharging;
+  final String powerSource;
+  final int timestamp;
+
+  const BatteryStatusModel({
+    required this.level,
+    required this.isCharging,
+    required this.powerSource,
+    required this.timestamp,
+  });
+
+  factory BatteryStatusModel.fromMap(Map<dynamic, dynamic> map) {
+    return BatteryStatusModel(
+      level: (map['level'] as num?)?.toInt() ?? 100,
+      isCharging: map['isCharging'] as bool? ?? false,
+      powerSource: map['powerSource'] as String? ?? 'battery',
+      timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class OtpEventModel {
+  final String serviceName;
+  final String code;
+  final int expiresIn;
+  final int timestamp;
+
+  const OtpEventModel({
+    required this.serviceName,
+    required this.code,
+    required this.expiresIn,
+    required this.timestamp,
+  });
+
+  factory OtpEventModel.fromMap(Map<dynamic, dynamic> map) {
+    return OtpEventModel(
+      serviceName: map['serviceName'] as String? ?? 'Service',
+      code: map['code'] as String? ?? '',
+      expiresIn: (map['expiresIn'] as num?)?.toInt() ?? 60,
+      timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class PlatformBridge {
   static const MethodChannel _channel = MethodChannel('com.corda.app/channel');
   static const EventChannel _clipboardEventChannel =
@@ -129,6 +175,10 @@ class PlatformBridge {
       EventChannel('com.corda.app/transfer_events');
   static const EventChannel _isolationEventChannel =
       EventChannel('com.corda.app/isolation_events');
+  static const EventChannel _batteryEventChannel =
+      EventChannel('com.corda.app/battery_events');
+  static const EventChannel _otpEventChannel =
+      EventChannel('com.corda.app/otp_events');
 
   static final PlatformBridge instance = PlatformBridge._internal();
   PlatformBridge._internal();
@@ -137,6 +187,8 @@ class PlatformBridge {
   Stream<DiscoveredDeviceModel>? _discoveryStream;
   Stream<TransferEventModel>? _transferStream;
   Stream<bool>? _apIsolationStream;
+  Stream<BatteryStatusModel>? _batteryStream;
+  Stream<OtpEventModel>? _otpStream;
 
   Future<PermissionStatusModel> checkPermissions() async {
     try {
@@ -263,6 +315,32 @@ class PlatformBridge {
     return _apIsolationStream!;
   }
 
+  Stream<BatteryStatusModel> get batteryStream {
+    _batteryStream ??= _batteryEventChannel
+        .receiveBroadcastStream()
+        .map((data) => BatteryStatusModel.fromMap(data as Map<dynamic, dynamic>))
+        .handleError((_) => null);
+    return _batteryStream!;
+  }
+
+  Stream<OtpEventModel> get otpStream {
+    _otpStream ??= _otpEventChannel
+        .receiveBroadcastStream()
+        .map((data) => OtpEventModel.fromMap(data as Map<dynamic, dynamic>))
+        .handleError((_) => null);
+    return _otpStream!;
+  }
+
+  Future<BatteryStatusModel?> getBatteryStatus() async {
+    try {
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('getBatteryStatus');
+      if (res != null) {
+        return BatteryStatusModel.fromMap(res);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<List<TrustedDeviceModel>> getTrustedDevices() async {
     try {
       final res = await _channel.invokeMethod<List<dynamic>>('getTrustedDevices');
@@ -306,6 +384,133 @@ class PlatformBridge {
       }
     } catch (_) {}
     return [];
+  }
+
+  Future<NotificationSettingsModel> getNotificationSettings() async {
+    try {
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('getNotificationSettings');
+      if (res != null) {
+        return NotificationSettingsModel.fromMap(res);
+      }
+    } catch (_) {}
+    return const NotificationSettingsModel(masterEnabled: true, apps: []);
+  }
+
+  Future<bool> setNotificationMasterEnabled(bool enabled) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setNotificationMasterEnabled', {'enabled': enabled});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> setNotificationPackageAllowed(String packageName, bool allowed) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setNotificationPackageAllowed', {
+        'packageName': packageName,
+        'allowed': allowed,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<InstalledAppModel>> getInstalledApps() async {
+    try {
+      final res = await _channel.invokeMethod<List<dynamic>>('getInstalledApps');
+      if (res != null) {
+        return res
+            .map((e) => InstalledAppModel.fromMap(e as Map<dynamic, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> addNotificationPackage(String packageName, String appName) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('addNotificationPackage', {
+        'packageName': packageName,
+        'appName': appName,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> removeNotificationPackage(String packageName) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('removeNotificationPackage', {
+        'packageName': packageName,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+class InstalledAppModel {
+  final String packageName;
+  final String appName;
+  final Uint8List? iconBytes;
+
+  const InstalledAppModel({
+    required this.packageName,
+    required this.appName,
+    this.iconBytes,
+  });
+
+  factory InstalledAppModel.fromMap(Map<dynamic, dynamic> map) {
+    return InstalledAppModel(
+      packageName: map['packageName'] as String? ?? '',
+      appName: map['appName'] as String? ?? '',
+      iconBytes: map['iconBytes'] as Uint8List?,
+    );
+  }
+}
+
+class NotificationAppModel {
+  final String packageName;
+  final String appName;
+  final bool isEnabled;
+  final Uint8List? iconBytes;
+
+  const NotificationAppModel({
+    required this.packageName,
+    required this.appName,
+    required this.isEnabled,
+    this.iconBytes,
+  });
+
+  factory NotificationAppModel.fromMap(Map<dynamic, dynamic> map) {
+    return NotificationAppModel(
+      packageName: map['packageName'] as String? ?? '',
+      appName: map['appName'] as String? ?? '',
+      isEnabled: map['isEnabled'] as bool? ?? false,
+      iconBytes: map['iconBytes'] as Uint8List?,
+    );
+  }
+}
+
+class NotificationSettingsModel {
+  final bool masterEnabled;
+  final List<NotificationAppModel> apps;
+
+  const NotificationSettingsModel({
+    required this.masterEnabled,
+    required this.apps,
+  });
+
+  factory NotificationSettingsModel.fromMap(Map<dynamic, dynamic> map) {
+    final rawApps = map['apps'] as List<dynamic>? ?? [];
+    return NotificationSettingsModel(
+      masterEnabled: map['masterEnabled'] as bool? ?? true,
+      apps: rawApps.map((e) => NotificationAppModel.fromMap(e as Map<dynamic, dynamic>)).toList(),
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 package com.corda.app.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
@@ -15,6 +16,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.corda.app.actions.TransparentClipboardReaderActivity
 import com.corda.app.events.ClipboardCopiedEvent
 import com.corda.app.events.CordaEventBus
+import com.corda.app.events.OtpDetectedEvent
+import com.corda.app.otp.OtpDetector
+import com.corda.app.notifications.NotificationMirrorEngine
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.corda.app.services.CordaForegroundService
@@ -216,18 +220,79 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
             return
         }
 
-        // 2. Toast / Notification state changed ("Berhasil disalin", "Tersalin ke clipboard", etc.)
+        // 2. Toast / Notification state changed ("Berhasil disalin", "Tersalin ke clipboard", or Smart OTP)
         if (eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             val textList = event.text.map { it.toString() }
-            val joined = textList.joinToString(" ").lowercase()
+            val joined = textList.joinToString(" ")
             Log.d(TAG, "Notification/Toast detected: '$joined'")
 
+            // A. Smart OTP Detection
+            val parcelable = event.parcelableData
+            var title: String? = null
+            var notificationContent = joined
+            if (parcelable is Notification) {
+                title = parcelable.extras?.getString(Notification.EXTRA_TITLE)
+                val textChar = parcelable.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                val bigTextChar = parcelable.extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                notificationContent = listOfNotNull(joined, textChar, bigTextChar).filter { it.isNotBlank() }.joinToString(" ")
+            }
+
+            val otpMatch = OtpDetector.detectOtp(
+                text = notificationContent,
+                title = title,
+                packageName = pkg
+            )
+
+            if (otpMatch != null) {
+                Log.i(TAG, "🔑 Smart OTP Terdeteksi di Accessibility: [${otpMatch.code}] dari '${otpMatch.serviceName}'! Mengirim ke Mac...")
+                CordaEventBus.postOtpDetected(
+                    OtpDetectedEvent(
+                        serviceName = otpMatch.serviceName,
+                        code = otpMatch.code,
+                        expiresIn = otpMatch.expiresIn
+                    )
+                )
+                CordaForegroundService.instance?.socketClient?.sendOtpDetected(
+                    serviceName = otpMatch.serviceName,
+                    code = otpMatch.code,
+                    expiresIn = otpMatch.expiresIn
+                )
+                // Privacy: Do not proceed further with raw text
+                return
+            }
+
+            // B. Whitelisted Notification Mirroring (Source-Side Filter)
+            if (parcelable is Notification && NotificationMirrorEngine.isPackageAllowed(this, pkg)) {
+                val notifTitle = title ?: ""
+                val textChar = parcelable.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                val bigTextChar = parcelable.extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                val notifText = (bigTextChar ?: textChar ?: joined).trim()
+
+                // Skip blank notifications
+                if (notifTitle.isNotBlank() || notifText.isNotBlank()) {
+                    if (NotificationMirrorEngine.shouldEmitNotification(pkg, notifTitle, notifText)) {
+                        val appName = NotificationMirrorEngine.getAppNameForPackage(this, pkg)
+                        val notificationId = "${pkg}_${System.currentTimeMillis()}"
+                        Log.i(TAG, "🔔 Notifikasi Whitelist Terdeteksi: [$appName] '$notifTitle' -> Mengirim ke Mac...")
+                        CordaForegroundService.instance?.socketClient?.sendNotificationMirror(
+                            notificationId = notificationId,
+                            packageName = pkg,
+                            appName = appName,
+                            title = notifTitle,
+                            text = notifText
+                        )
+                    }
+                }
+            }
+
+            // C. Toast copy confirmation detection
+            val lowerJoined = joined.lowercase()
             val copyKeywords = listOf(
                 "salin", "copy", "tersalin", "disalin", "clipboard", "klip",
                 "papan klip", "copied", "berhasil disalin", "berhasil", "copied to clipboard"
             )
-            if (copyKeywords.any { joined.contains(it) }) {
-                Log.i(TAG, "Toast konfirmasi salin terdeteksi ('$joined')! Meluncurkan transparent reader...")
+            if (copyKeywords.any { lowerJoined.contains(it) }) {
+                Log.i(TAG, "Toast konfirmasi salin terdeteksi ('$lowerJoined')! Meluncurkan transparent reader...")
                 launchTransparentReader()
                 return
             }
