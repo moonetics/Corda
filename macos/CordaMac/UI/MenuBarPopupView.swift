@@ -135,7 +135,7 @@ public struct MenuBarPopupView: View {
 
             // MARK: - Footer: Quit
             HStack {
-                Text("Corda Continuity v1.2")
+                Text("Corda Continuity v1.3")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
 

@@ -47,7 +47,8 @@ bundle-mac: build-mac
 	@cp macos/CordaMac/Info.plist build/Corda.app/Contents/
 	@cp -R macos/.build/out/Products/Release/CordaMac_CordaMac.bundle build/Corda.app/Contents/Resources/ 2>/dev/null || true
 	@cp macos/CordaMac/Resources/* build/Corda.app/Contents/Resources/
-	@echo "  [OK] Corda.app created at build/Corda.app"
+	@codesign -f -s - --deep build/Corda.app
+	@echo "  [OK] Corda.app created and signed at build/Corda.app"
 
 install-mac: bundle-mac
 	@echo "Installing Corda.app to /Applications..."

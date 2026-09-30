@@ -112,7 +112,10 @@ public final class FileStreamingManager: ObservableObject {
         guard listener == nil else { return }
 
         do {
-            let parameters = NWParameters.tcp
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.noDelay = true
+            tcpOptions.enableKeepalive = true
+            let parameters = NWParameters(tls: nil, tcp: tcpOptions)
             parameters.allowLocalEndpointReuse = true
 
             let nwListener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: Self.dataPort)!)
@@ -226,11 +229,51 @@ public final class FileStreamingManager: ObservableObject {
         }
     }
 
+    /// Robust TCP byte accumulator that reads until exactly `length` bytes have been received,
+    /// preventing socket segmentation drops or premature stalls.
+    private func readExact(
+        from connection: NWConnection,
+        length: Int,
+        accumulated: Data = Data(),
+        completion: @escaping (Data?) -> Void
+    ) {
+        let remaining = length - accumulated.count
+        guard remaining > 0 else {
+            completion(accumulated)
+            return
+        }
+
+        connection.receive(minimumIncompleteLength: 1, maximumLength: remaining) { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                #if DEBUG
+                print("[DataStream] readExact error: \(error)")
+                #endif
+                completion(nil)
+                return
+            }
+
+            var newAccum = accumulated
+            if let data = data, !data.isEmpty {
+                newAccum.append(data)
+            }
+
+            if newAccum.count == length {
+                completion(newAccum)
+            } else if isComplete {
+                completion(nil)
+            } else {
+                self.readExact(from: connection, length: length, accumulated: newAccum, completion: completion)
+            }
+        }
+    }
+
     private func readNextFrame(from connection: NWConnection) {
-        // Read 40-byte binary header
-        connection.receive(minimumIncompleteLength: 40, maximumLength: 40) { [weak self] headerData, _, isComplete, error in
-            guard let self = self, let header = headerData, header.count == 40, error == nil else {
-                if isComplete { self?.cleanupReceivingSession() }
+        // Read 40-byte binary header with readExact
+        readExact(from: connection, length: 40) { [weak self] headerData in
+            guard let self = self, let header = headerData, header.count == 40 else {
+                self?.cleanupReceivingSession()
                 return
             }
 
@@ -242,6 +285,7 @@ public final class FileStreamingManager: ObservableObject {
                 #if DEBUG
                 print("[DataStream] Invalid Magic Bytes in header. Aborting frame.")
                 #endif
+                self.cleanupReceivingSession()
                 return
             }
 
@@ -274,8 +318,12 @@ public final class FileStreamingManager: ObservableObject {
 
     private func readChunkPayloadAndChecksum(from connection: NWConnection, payloadLength: Int, header: Data) {
         let totalExpected = payloadLength + 32 // payload + SHA256 checksum
-        connection.receive(minimumIncompleteLength: totalExpected, maximumLength: totalExpected) { [weak self] chunkData, _, _, error in
-            guard let self = self, let data = chunkData, data.count == totalExpected, error == nil else {
+        readExact(from: connection, length: totalExpected) { [weak self] chunkData in
+            guard let self = self, let data = chunkData, data.count == totalExpected else {
+                #if DEBUG
+                print("[DataStream] Failed to read chunk data (\(totalExpected) bytes). Connection closed or dropped.")
+                #endif
+                self?.cleanupReceivingSession()
                 return
             }
 
@@ -288,6 +336,7 @@ public final class FileStreamingManager: ObservableObject {
                 #if DEBUG
                 print("[DataStream] Chunk checksum mismatch! Corrupted chunk dropped.")
                 #endif
+                self.cleanupReceivingSession()
                 return
             }
 

@@ -3,11 +3,13 @@ import UserNotifications
 import AppKit
 
 /// Manages interactive macOS notifications for incoming OTP codes and device battery alerts.
-public final class OtpNotificationManager: NSObject, UNUserNotificationCenterDelegate {
+public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     public static let shared = OtpNotificationManager()
 
     public static let categoryOtp = "CORDA_OTP_CATEGORY"
     public static let actionCopyCode = "CORDA_COPY_CODE_ACTION"
+
+    @Published public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
     private var lastAlertedBatteryLevel: Int? = nil
     private var lastAlertedChargingState: Bool? = nil
@@ -36,16 +38,79 @@ public final class OtpNotificationManager: NSObject, UNUserNotificationCenterDel
         )
 
         center.setNotificationCategories([otpCategory])
+        checkAuthorizationStatus()
+    }
 
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+    public func checkAuthorizationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                self.authorizationStatus = settings.authorizationStatus
+            }
+        }
+    }
+
+    public func requestPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            DispatchQueue.main.async {
+                self.checkAuthorizationStatus()
+                if !granted {
+                    self.openSystemNotificationSettings()
+                }
+            }
+        }
+    }
+
+    public func openSystemNotificationSettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.preference.notifications",
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+        ]
+        for urlStr in candidates {
+            if let url = URL(string: urlStr) {
+                if NSWorkspace.shared.open(url) {
+                    return
+                }
+            }
+        }
+    }
+
+    /// Dispatch a test notification to verify macOS notification center delivery
+    public func sendTestNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "WhatsApp: Corda Continuity"
+        content.body = "🔔 Berhasil! Notifikasi ponsel terhubung dan tampil di Mac Anda."
+        content.sound = .default
+        content.userInfo = [
+            "type": "NOTIFICATION_TEST",
+            "package_name": "com.corda.test",
+            "notification_id": "test_\(Date().timeIntervalSince1970)"
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: "test_\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
             #if DEBUG
             if let error = error {
-                print("[OtpNotification] Notification authorization error: \(error)")
+                print("[NotificationTest] UNUserNotificationCenter error: \(error). Running native fallback.")
             } else {
-                print("[OtpNotification] Notification authorization granted: \(granted)")
+                print("[NotificationTest] Test notification dispatched successfully via UNUserNotificationCenter.")
             }
             #endif
+
+            // Run AppleScript alert fallback to ensure banner is 100% visible on macOS desktop
+            DispatchQueue.main.async {
+                let scriptSource = "display notification \"🔔 Berhasil! Notifikasi ponsel terhubung dan tampil di Mac Anda.\" with title \"WhatsApp: Corda Continuity\" sound name \"Glass\""
+                if let script = NSAppleScript(source: scriptSource) {
+                    var errorInfo: NSDictionary?
+                    script.executeAndReturnError(&errorInfo)
+                }
+            }
         }
+        NSSound(named: "Glass")?.play()
     }
 
     /// Present an interactive notification for an incoming OTP code
@@ -125,6 +190,19 @@ public final class OtpNotificationManager: NSObject, UNUserNotificationCenterDel
                 print("[NotificationMirror] Successfully posted mirrored notification for \(appName)")
             }
             #endif
+
+            // Dual delivery fallback: if UNUserNotificationCenter fails or is restricted
+            if error != nil {
+                DispatchQueue.main.async {
+                    let escapedTitle = displayTitle.replacingOccurrences(of: "\"", with: "\\\"")
+                    let escapedBody = displayBody.replacingOccurrences(of: "\"", with: "\\\"")
+                    let scriptSource = "display notification \"\(escapedBody)\" with title \"\(escapedTitle)\" sound name \"Glass\""
+                    if let script = NSAppleScript(source: scriptSource) {
+                        var errorInfo: NSDictionary?
+                        script.executeAndReturnError(&errorInfo)
+                    }
+                }
+            }
         }
     }
 

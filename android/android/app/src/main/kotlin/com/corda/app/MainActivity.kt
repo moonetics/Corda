@@ -205,6 +205,9 @@ class MainActivity : FlutterActivity() {
                 }
                 "getNotificationSettings" -> {
                     val master = NotificationMirrorEngine.isMasterEnabled(this)
+                    val allApps = NotificationMirrorEngine.isAllAppsEnabled(this)
+                    val allSystem = NotificationMirrorEngine.isAllSystemEnabled(this)
+                    val blacklisted = NotificationMirrorEngine.getBlacklistedApps(this)
                     val apps = NotificationMirrorEngine.getWhitelistedApps(this)
                     val pm = packageManager
                     val appsWithIcons = apps.map { app ->
@@ -224,9 +227,54 @@ class MainActivity : FlutterActivity() {
                     result.success(
                         mapOf(
                             "masterEnabled" to master,
+                            "allAppsEnabled" to allApps,
+                            "allSystemEnabled" to allSystem,
+                            "blacklistedApps" to blacklisted,
                             "apps" to appsWithIcons
                         )
                     )
+                }
+                "setNotificationAllAppsEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    NotificationMirrorEngine.setAllAppsEnabled(this, enabled)
+                    CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                    result.success(true)
+                }
+                "setNotificationAllSystemEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    NotificationMirrorEngine.setAllSystemEnabled(this, enabled)
+                    CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                    result.success(true)
+                }
+                "setNotificationAppBlacklisted" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    val blacklisted = call.argument<Boolean>("blacklisted") ?: false
+                    if (pkg.isNotEmpty()) {
+                        NotificationMirrorEngine.setAppBlacklisted(this, pkg, blacklisted)
+                        CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                    }
+                }
+                "openNotificationListenerSettings" -> {
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
+                    }
+                }
+                "sendTestNotification" -> {
+                    CordaForegroundService.instance?.socketClient?.sendNotificationMirror(
+                        notificationId = "test_${System.currentTimeMillis()}",
+                        packageName = "com.whatsapp",
+                        appName = "WhatsApp",
+                        title = "Corda Continuity",
+                        text = "🔔 Pesan uji coba berhasil dikirim dari HP Android Anda ke Mac!"
+                    )
+                    result.success(true)
                 }
                 "getInstalledApps" -> {
                     CoroutineScope(Dispatchers.IO).launch {

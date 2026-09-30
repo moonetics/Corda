@@ -25,8 +25,12 @@ object NotificationMirrorEngine {
     private const val TAG = "NotificationMirror"
     private const val PREFS_NAME = "corda_notification_whitelist_prefs"
     private const val KEY_MASTER_ENABLED = "notification_mirroring_master_enabled"
+    private const val KEY_ALL_APPS_ENABLED = "notification_mirroring_all_apps_enabled"
+    private const val KEY_ALL_SYSTEM_ENABLED = "notification_mirroring_all_system_enabled"
+    private const val KEY_BLACKLISTED_APPS_JSON = "notification_blacklisted_apps_json"
     private const val KEY_WHITELIST_JSON = "notification_whitelist_apps_json"
     private const val KEY_PREFIX_PKG = "pkg_allowed_"
+    private const val KEY_PREFIX_BLACKLIST = "pkg_blacklisted_"
 
     // Deduplication LRU cache: maps notification signature to last emission timestamp
     private val deduplicationCache = object : LinkedHashMap<String, Long>(32, 0.75f, true) {
@@ -53,6 +57,113 @@ object NotificationMirrorEngine {
     fun setMasterEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_MASTER_ENABLED, enabled).apply()
         Log.i(TAG, "Master Notification Mirroring set to: $enabled")
+    }
+
+    /**
+     * Check if All Applications universal forwarding is enabled.
+     */
+    fun isAllAppsEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_ALL_APPS_ENABLED, false)
+    }
+
+    /**
+     * Update All Applications universal forwarding state.
+     */
+    fun setAllAppsEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_ALL_APPS_ENABLED, enabled).apply()
+        Log.i(TAG, "All Applications Forwarding set to: $enabled")
+    }
+
+    /**
+     * Check if Android System alerts (OS, SystemUI, low-level alerts) are included.
+     * Default is false matching Apple Continuity behavior.
+     */
+    fun isAllSystemEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_ALL_SYSTEM_ENABLED, false)
+    }
+
+    /**
+     * Update Android System alerts forwarding state.
+     */
+    fun setAllSystemEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_ALL_SYSTEM_ENABLED, enabled).apply()
+        Log.i(TAG, "Android System Alerts set to: $enabled")
+    }
+
+    /**
+     * Determine if a package belongs to Android OS core or low-level system UI.
+     */
+    fun isSystemApp(context: Context, packageName: String): Boolean {
+        if (packageName == "android" ||
+            packageName.startsWith("com.android.systemui") ||
+            packageName == "com.google.android.gms" ||
+            packageName.startsWith("com.android.providers.") ||
+            packageName.startsWith("com.google.android.providers.")) {
+            return true
+        }
+        return try {
+            val pm = context.packageManager
+            val ai = pm.getApplicationInfo(packageName, 0)
+            (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 || 
+            (ai.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Returns the list of blacklisted / excluded package names.
+     */
+    fun getBlacklistedApps(context: Context): List<String> {
+        val prefs = getPrefs(context)
+        val jsonStr = prefs.getString(KEY_BLACKLISTED_APPS_JSON, null) ?: return emptyList()
+        val list = mutableListOf<String>()
+        try {
+            val arr = JSONArray(jsonStr)
+            for (i in 0 until arr.length()) {
+                val pkg = arr.optString(i)
+                if (pkg.isNotEmpty()) {
+                    list.add(pkg)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse blacklisted apps JSON: ${e.message}")
+        }
+        return list
+    }
+
+    /**
+     * Check if a specific package is blacklisted/excluded.
+     */
+    fun isAppBlacklisted(context: Context, packageName: String): Boolean {
+        val prefs = getPrefs(context)
+        val key = KEY_PREFIX_BLACKLIST + packageName
+        if (prefs.contains(key)) {
+            return prefs.getBoolean(key, false)
+        }
+        return getBlacklistedApps(context).contains(packageName)
+    }
+
+    /**
+     * Set blacklisted/excluded state for an app in All Applications mode.
+     */
+    fun setAppBlacklisted(context: Context, packageName: String, blacklisted: Boolean) {
+        val current = getBlacklistedApps(context).toMutableList()
+        if (blacklisted) {
+            if (!current.contains(packageName)) current.add(packageName)
+        } else {
+            current.remove(packageName)
+        }
+        val arr = JSONArray()
+        for (pkg in current) {
+            arr.put(pkg)
+        }
+        val prefs = getPrefs(context)
+        prefs.edit()
+            .putString(KEY_BLACKLISTED_APPS_JSON, arr.toString())
+            .putBoolean(KEY_PREFIX_BLACKLIST + packageName, blacklisted)
+            .apply()
+        Log.i(TAG, "Notification app '$packageName' blacklisted set to: $blacklisted")
     }
 
     /**
@@ -130,10 +241,34 @@ object NotificationMirrorEngine {
     }
 
     /**
-     * Check if a specific package is whitelisted and mirroring is enabled.
+     * Check if a specific package is allowed to forward notifications to macOS.
+     * Respects master switch, All Applications universal mode, blacklist exclusions,
+     * System Alerts toggle, and fallback custom whitelist.
      */
     fun isPackageAllowed(context: Context, packageName: String): Boolean {
         if (!isMasterEnabled(context)) return false
+
+        // Never mirror notifications from Corda itself
+        if (packageName == context.packageName) return false
+
+        // 1. All Applications mode (Universal Continuity Mode)
+        if (isAllAppsEnabled(context)) {
+            // Check if user specifically excluded/blacklisted this app
+            if (isAppBlacklisted(context, packageName)) {
+                return false
+            }
+
+            val isSys = isSystemApp(context, packageName)
+            return if (isSys) {
+                // If internal OS system app, only allow if user explicitly enabled System Alerts
+                isAllSystemEnabled(context)
+            } else {
+                // Regular user-installed app (WhatsApp, Telegram, etc.) is allowed!
+                true
+            }
+        }
+
+        // 2. Custom Whitelist mode
         val apps = getWhitelistedApps(context)
         val app = apps.firstOrNull { it["packageName"] == packageName } ?: return false
         val key = KEY_PREFIX_PKG + packageName

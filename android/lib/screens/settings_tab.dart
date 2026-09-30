@@ -72,6 +72,24 @@ class _SettingsTabState extends State<SettingsTab> {
     if (mounted) setState(() => _notificationSettings = notif);
   }
 
+  Future<void> _toggleNotificationAllApps(bool value) async {
+    await PlatformBridge.instance.setNotificationAllAppsEnabled(value);
+    final notif = await PlatformBridge.instance.getNotificationSettings();
+    if (mounted) setState(() => _notificationSettings = notif);
+  }
+
+  Future<void> _toggleNotificationAllSystem(bool value) async {
+    await PlatformBridge.instance.setNotificationAllSystemEnabled(value);
+    final notif = await PlatformBridge.instance.getNotificationSettings();
+    if (mounted) setState(() => _notificationSettings = notif);
+  }
+
+  Future<void> _toggleNotificationBlacklist(String packageName, bool blacklisted) async {
+    await PlatformBridge.instance.setNotificationAppBlacklisted(packageName, blacklisted);
+    final notif = await PlatformBridge.instance.getNotificationSettings();
+    if (mounted) setState(() => _notificationSettings = notif);
+  }
+
   Future<void> _toggleNotificationApp(String packageName, bool value) async {
     await PlatformBridge.instance.setNotificationPackageAllowed(packageName, value);
     final notif = await PlatformBridge.instance.getNotificationSettings();
@@ -445,7 +463,44 @@ class _SettingsTabState extends State<SettingsTab> {
               const SizedBox(height: 20),
 
               // SECTION 2.6: Notification Mirroring Whitelist
-              _buildSectionTitle('NOTIFICATION MIRRORING WHITELIST'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildSectionTitle('NOTIFICATION MIRRORING'),
+                  InkWell(
+                    onTap: () async {
+                      await PlatformBridge.instance.sendTestNotification();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('🔔 Test notifikasi dikirim ke Mac!'),
+                            duration: Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.paperplane_fill, size: 12, color: CordaTheme.accentBlue),
+                          SizedBox(width: 4),
+                          Text(
+                            'Test Notifikasi',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: CordaTheme.accentBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               SonomaCard(
                 padding: const EdgeInsets.all(16),
@@ -482,11 +537,115 @@ class _SettingsTabState extends State<SettingsTab> {
                       const SizedBox(height: 12),
                       const Divider(height: 1),
                       const SizedBox(height: 12),
+
+                      // 1. All App Notification
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: CordaTheme.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: CordaTheme.borderSubtle),
+                            ),
+                            child: const Icon(CupertinoIcons.app_badge_fill, color: CordaTheme.accentBlue, size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'All App Notification',
+                                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0x1F0A84FF),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: const Color(0x4D0A84FF)),
+                                      ),
+                                      child: const Text(
+                                        'Apple Continuity',
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CordaTheme.accentBlue),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                const Text(
+                                  'Forward alerts from all installed apps automatically (Apple Continuity)',
+                                  style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          CupertinoSwitch(
+                            value: _notificationSettings.allAppsEnabled,
+                            activeTrackColor: CordaTheme.accentBlue,
+                            onChanged: (val) => _toggleNotificationAllApps(val),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+
+                      // 2. All System Notification (Balanced Sibling)
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: CordaTheme.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: CordaTheme.borderSubtle),
+                            ),
+                            child: const Icon(CupertinoIcons.gear_alt_fill, color: CordaTheme.textSecondary, size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'All System Notification',
+                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.white),
+                                ),
+                                const SizedBox(height: 3),
+                                const Text(
+                                  'Internal OS alerts, charging status & system UI notifications (default off)',
+                                  style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          CupertinoSwitch(
+                            value: _notificationSettings.allSystemEnabled,
+                            activeTrackColor: CordaTheme.accentBlue,
+                            onChanged: (val) => _toggleNotificationAllSystem(val),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'APLIKASI TERDAFTAR (${_notificationSettings.apps.length})',
+                            _notificationSettings.allAppsEnabled
+                                ? 'PENGECEUALIAN (${_notificationSettings.blacklistedApps.length} DIKECUALIKAN)'
+                                : 'APLIKASI TERDAFTAR (${_notificationSettings.apps.length})',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -504,14 +663,14 @@ class _SettingsTabState extends State<SettingsTab> {
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(color: const Color(0x4D0A84FF)),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(CupertinoIcons.plus, size: 12, color: CordaTheme.accentBlue),
-                                  SizedBox(width: 4),
+                                  const Icon(CupertinoIcons.plus, size: 12, color: CordaTheme.accentBlue),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    'Tambah Aplikasi',
-                                    style: TextStyle(
+                                    _notificationSettings.allAppsEnabled ? 'Tambah Pengecualian' : 'Tambah Aplikasi',
+                                    style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
                                       color: CordaTheme.accentBlue,
@@ -524,7 +683,19 @@ class _SettingsTabState extends State<SettingsTab> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (_notificationSettings.apps.isEmpty)
+
+                      if (_notificationSettings.allAppsEnabled)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            _notificationSettings.blacklistedApps.isEmpty
+                                ? 'Seluruh notifikasi aplikasi aktif secara universal. Ketuk "+ Tambah Pengecualian" di atas jika ada aplikasi yang ingin Anda kecualikan/bungkam.'
+                                : 'Aplikasi di bawah ini dikecualikan (dibungkam) dan tidak akan diteruskan ke Mac:',
+                            style: const TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
+                          ),
+                        ),
+
+                      if (!_notificationSettings.allAppsEnabled && _notificationSettings.apps.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
                           child: Center(
@@ -557,6 +728,9 @@ class _SettingsTabState extends State<SettingsTab> {
                         )
                       else
                         ..._notificationSettings.apps.map((app) {
+                          final isBlacklisted = _notificationSettings.allAppsEnabled &&
+                              _notificationSettings.blacklistedApps.contains(app.packageName);
+
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Row(
@@ -598,8 +772,13 @@ class _SettingsTabState extends State<SettingsTab> {
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       Text(
-                                        app.packageName,
-                                        style: const TextStyle(fontSize: 10, color: CordaTheme.textSecondary),
+                                        _notificationSettings.allAppsEnabled
+                                            ? (isBlacklisted ? 'Dikecualikan (Bungkam)' : 'Aktif Universal')
+                                            : app.packageName,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: isBlacklisted ? CordaTheme.roseDanger : CordaTheme.textSecondary,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -607,9 +786,17 @@ class _SettingsTabState extends State<SettingsTab> {
                                   ),
                                 ),
                                 CupertinoSwitch(
-                                  value: app.isEnabled,
+                                  value: _notificationSettings.allAppsEnabled
+                                      ? !isBlacklisted
+                                      : app.isEnabled,
                                   activeTrackColor: CordaTheme.accentBlue,
-                                  onChanged: (val) => _toggleNotificationApp(app.packageName, val),
+                                  onChanged: (val) {
+                                    if (_notificationSettings.allAppsEnabled) {
+                                      _toggleNotificationBlacklist(app.packageName, !val);
+                                    } else {
+                                      _toggleNotificationApp(app.packageName, val);
+                                    }
+                                  },
                                 ),
                                 const SizedBox(width: 4),
                                 IconButton(
@@ -637,6 +824,21 @@ class _SettingsTabState extends State<SettingsTab> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    _buildServiceTile(
+                      icon: CupertinoIcons.bell_fill,
+                      title: 'Notification Access',
+                      subtitle: _permissions.notificationListener
+                          ? 'Automatic notification capture active'
+                          : 'Tap to grant in notification access settings',
+                      isPositive: _permissions.notificationListener,
+                      statusText: _permissions.notificationListener ? 'Active' : 'Setup',
+                      onTap: () async {
+                        await PlatformBridge.instance.openNotificationListenerSettings();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
                     _buildServiceTile(
                       icon: CupertinoIcons.waveform_path_ecg,
                       title: 'Background Sync',
@@ -721,7 +923,7 @@ class _SettingsTabState extends State<SettingsTab> {
                     ),
                     const SizedBox(height: 3),
                     const Text(
-                      'v1.2.0 • Apple Continuity for Android',
+                      'v1.3.0 • Apple Continuity for Android',
                       style: TextStyle(
                         fontSize: 11,
                         color: CordaTheme.textMuted,

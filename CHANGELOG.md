@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-10-01
+
+### Added
+- **Bidirectional Bonjour / mDNS Discovery**:
+  - Registered native Android `NsdManager.registerService()` in `CordaForegroundService` broadcasting `_corda._tcp` alongside client browsing, enabling macOS to instantly find nearby Android phones.
+  - Enhanced macOS `BonjourDiscoveryManager` to immediately resolve endpoints with graceful TXT attribute parsing and deduplication across network interfaces.
+  - Added dynamic companion state in macOS Devices tab showing **Ready to Pair**, **Trusted Companion**, or **Connected**.
+- **Apple Continuity Notification Mirroring & Filtering**:
+  - Balanced Android settings UI with **All App Notification** and **All System Notification** sibling cards.
+  - Added native test alert delivery mechanism on macOS supporting both `UNUserNotificationCenter` and `NSAppleScript` fallbacks.
+
+### Fixed
+- **Large File & Image Streaming Stalls**: Implemented recursive `readExact` TCP accumulator on macOS `FileStreamingManager` to prevent byte buffer truncation and transfer stalls.
+- **macOS Bundle Signing**: Automated ad-hoc code-signing in `Makefile` to allow native macOS notification authorization without requiring manual certificate installation.
+
+---
+
 ## [1.1.0] - 2026-09-30
 
 ### Added

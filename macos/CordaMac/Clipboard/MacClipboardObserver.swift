@@ -80,24 +80,23 @@ public final class MacClipboardObserver: ObservableObject {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
 
-            // 1. Write as file URL for Finder / system paste
-            pasteboard.writeObjects([localURL as NSURL])
-
-            // 2. If it's an image, also provide NSImage and PNG data for rich text / image paste
+            var objectsToPaste: [NSPasteboardWriting] = [localURL as NSURL]
             let isImage = mimeType.starts(with: "image/") ||
                 ["png", "jpg", "jpeg", "webp", "gif"].contains(localURL.pathExtension.lowercased())
-            if isImage {
-                if let image = NSImage(contentsOf: localURL) {
-                    pasteboard.writeObjects([image])
-                }
-                if let imgData = try? Data(contentsOf: localURL) {
-                    pasteboard.setData(imgData, forType: .png)
-                }
+
+            if isImage, let image = NSImage(contentsOf: localURL) {
+                objectsToPaste.append(image)
+            }
+            pasteboard.writeObjects(objectsToPaste)
+
+            if isImage, let imgData = try? Data(contentsOf: localURL) {
+                pasteboard.setData(imgData, forType: .png)
             }
 
             self.changeCount = pasteboard.changeCount
             self.lastCopiedText = isImage ? "🖼️ \(localURL.lastPathComponent)" : "📁 \(localURL.lastPathComponent)"
             self.lastChangeTimestamp = Date()
+            NSSound(named: "Pop")?.play()
         }
     }
 

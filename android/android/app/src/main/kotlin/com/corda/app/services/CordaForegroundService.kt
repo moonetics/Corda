@@ -36,7 +36,10 @@ import kotlinx.coroutines.launch
 import com.corda.app.accessibility.ClipboardAccessibilityService
 import com.corda.app.network.ControlSocketClient
 import com.corda.app.receivers.BatteryBroadcastReceiver
+import com.corda.app.security.KeyStoreManager
 import com.corda.app.security.TrustedDeviceStore
+import android.provider.Settings
+import java.util.UUID
 
 class CordaForegroundService : Service() {
 
@@ -61,8 +64,10 @@ class CordaForegroundService : Service() {
 
     private var nsdManager: NsdManager? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    private var registrationListener: NsdManager.RegistrationListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var isDiscovering = false
+    private var isAdvertising = false
 
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -145,6 +150,7 @@ class CordaForegroundService : Service() {
 
         Log.i(TAG, "Memulai CordaForegroundService dalam mode hening (IMPORTANCE_MIN)...")
         startSilentForeground()
+        startMdnsAdvertising()
         startMdnsDiscovery()
         scheduleAPIsolationCheck()
         isRunning = true
@@ -225,6 +231,82 @@ class CordaForegroundService : Service() {
         nsdManager = getSystemService(Context.NSD_SERVICE) as? NsdManager
     }
 
+    private fun startMdnsAdvertising() {
+        if (isAdvertising || registrationListener != null || nsdManager == null) return
+
+        val friendlyName = try {
+            Settings.Global.getString(contentResolver, "device_name") ?: Build.MODEL
+        } catch (_: Exception) {
+            Build.MODEL
+        } ?: "Android Device"
+
+        val serviceInfo = NsdServiceInfo().apply {
+            serviceName = "Corda-$friendlyName"
+            serviceType = "_corda._tcp"
+            port = 54321
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    val fp = KeyStoreManager.getPublicKeyFingerprint()
+                    val devId = socketClient?.getLocalDeviceId() ?: UUID.randomUUID().toString()
+                    setAttribute("name", friendlyName)
+                    setAttribute("model", "Android")
+                    setAttribute("dev_id", devId)
+                    setAttribute("fp", fp)
+                    setAttribute("v", "1")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Gagal setAttribute mDNS", e)
+                }
+            }
+        }
+
+        registrationListener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(service: NsdServiceInfo) {
+                isAdvertising = true
+                Log.i(TAG, "mDNS Service '${service.serviceName}' berhasil didaftarkan ke jaringan!")
+            }
+
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                isAdvertising = false
+                registrationListener = null
+                Log.e(TAG, "Gagal mendaftarkan mDNS Service: Error code $errorCode")
+            }
+
+            override fun onServiceUnregistered(service: NsdServiceInfo) {
+                isAdvertising = false
+                registrationListener = null
+                Log.i(TAG, "mDNS Service '${service.serviceName}' telah dihentikan (unregistered).")
+            }
+
+            override fun onUnregistrationFailed(service: NsdServiceInfo, errorCode: Int) {
+                isAdvertising = false
+                registrationListener = null
+                Log.e(TAG, "Gagal menghentikan mDNS Service: Error code $errorCode")
+            }
+        }
+
+        try {
+            nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception saat memanggil registerService", e)
+            registrationListener = null
+            isAdvertising = false
+        }
+    }
+
+    private fun stopMdnsAdvertising() {
+        val listener = registrationListener ?: return
+        if (nsdManager == null) return
+        try {
+            nsdManager?.unregisterService(listener)
+        } catch (e: Exception) {
+            Log.w(TAG, "Exception saat unregisterService", e)
+        } finally {
+            registrationListener = null
+            isAdvertising = false
+        }
+    }
+
     private fun startMdnsDiscovery() {
         if (isDiscovering || nsdManager == null) return
 
@@ -237,6 +319,15 @@ class CordaForegroundService : Service() {
             override fun onServiceFound(service: NsdServiceInfo) {
                 Log.i(TAG, "Layanan mDNS ditemukan: ${service.serviceName} (${service.serviceType})")
                 if (service.serviceType.contains("_corda._tcp")) {
+                    val friendlyName = try {
+                        Settings.Global.getString(contentResolver, "device_name") ?: Build.MODEL
+                    } catch (_: Exception) {
+                        Build.MODEL
+                    }
+                    if (service.serviceName.contains(friendlyName) || service.serviceName.contains(Build.MODEL)) {
+                        Log.d(TAG, "Mengabaikan layanan mDNS milik perangkat lokal sendiri: ${service.serviceName}")
+                        return
+                    }
                     resolveMdnsService(service)
                 }
             }
@@ -409,8 +500,9 @@ class CordaForegroundService : Service() {
 
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    Log.i(TAG, "Jaringan Wi-Fi aktif. Memulai mDNS discovery dan silent auto-connect...")
+                    Log.i(TAG, "Jaringan Wi-Fi aktif. Memulai mDNS advertising, discovery dan silent auto-connect...")
                     hasDiscoveredAnyPeer = false
+                    startMdnsAdvertising()
                     startMdnsDiscovery()
                     scheduleAPIsolationCheck()
 
@@ -426,6 +518,7 @@ class CordaForegroundService : Service() {
 
                 override fun onLost(network: Network) {
                     Log.w(TAG, "Jaringan Wi-Fi terputus.")
+                    stopMdnsAdvertising()
                     apIsolationJob?.cancel()
                     CordaEventBus.postApIsolation(false)
                     socketClient?.disconnect()
@@ -490,6 +583,7 @@ class CordaForegroundService : Service() {
         isRunning = false
         CordaEventBus.postServiceState(ServiceState(isRunning = false, statusMessage = "Layanan dinonaktifkan"))
 
+        stopMdnsAdvertising()
         if (isDiscovering && discoveryListener != null) {
             try {
                 nsdManager?.stopServiceDiscovery(discoveryListener)

@@ -416,6 +416,27 @@ class ControlSocketClient(private val context: Context) {
                     Log.i(TAG, "Menerima CLIPBOARD_FILE_ANNOUNCE dari Mac ($fileName). Memulai streaming file clipboard...")
                     dataStreamClient.startReceivingClipboardFile(json, host, FileDataStreamClient.DATA_PORT)
                 }
+                "NOTIFICATION_WHITELIST_UPDATE" -> {
+                    val master = json.optBoolean("master_enabled", NotificationMirrorEngine.isMasterEnabled(context))
+                    NotificationMirrorEngine.setMasterEnabled(context, master)
+                    if (json.has("all_apps_enabled")) {
+                        NotificationMirrorEngine.setAllAppsEnabled(context, json.getBoolean("all_apps_enabled"))
+                    }
+                    if (json.has("all_system_enabled")) {
+                        NotificationMirrorEngine.setAllSystemEnabled(context, json.getBoolean("all_system_enabled"))
+                    }
+                    if (json.has("package_to_blacklist") && json.has("package_blacklisted")) {
+                        val pkg = json.getString("package_to_blacklist")
+                        val blacklisted = json.getBoolean("package_blacklisted")
+                        NotificationMirrorEngine.setAppBlacklisted(context, pkg, blacklisted)
+                    }
+                    if (json.has("package_to_toggle") && json.has("package_enabled")) {
+                        val pkg = json.getString("package_to_toggle")
+                        val allowed = json.getBoolean("package_enabled")
+                        NotificationMirrorEngine.setPackageAllowed(context, pkg, allowed)
+                    }
+                    sendNotificationWhitelistSync()
+                }
                 "HEARTBEAT_PONG" -> {
                     missedPongs = 0
                     Log.d(TAG, "Heartbeat PONG diterima dari Mac (koneksi aktif).")
@@ -492,6 +513,14 @@ class ControlSocketClient(private val context: Context) {
             if (!isConnected) return@launch
             try {
                 val master = NotificationMirrorEngine.isMasterEnabled(context)
+                val allApps = NotificationMirrorEngine.isAllAppsEnabled(context)
+                val allSystem = NotificationMirrorEngine.isAllSystemEnabled(context)
+                val blacklisted = NotificationMirrorEngine.getBlacklistedApps(context)
+                val blacklistedArray = JSONArray()
+                for (b in blacklisted) {
+                    blacklistedArray.put(b)
+                }
+
                 val apps = NotificationMirrorEngine.getWhitelistedApps(context)
                 val appsArray = JSONArray()
                 for (app in apps) {
@@ -509,11 +538,14 @@ class ControlSocketClient(private val context: Context) {
                     put("type", "NOTIFICATION_WHITELIST_SYNC")
                     put("device_id", getLocalDeviceId())
                     put("master_enabled", master)
+                    put("all_apps_enabled", allApps)
+                    put("all_system_enabled", allSystem)
+                    put("blacklisted_apps", blacklistedArray)
                     put("apps", appsArray)
                     put("timestamp", getIso8601Timestamp())
                 }
                 writeLine(payload.toString())
-                Log.i(TAG, "Berhasil mengirim NOTIFICATION_WHITELIST_SYNC ke Mac (${appsArray.length()} aplikasi, master=$master)")
+                Log.i(TAG, "Berhasil mengirim NOTIFICATION_WHITELIST_SYNC ke Mac (allApps=$allApps, apps=${appsArray.length()}, blacklisted=${blacklistedArray.length()})")
             } catch (e: Exception) {
                 Log.e(TAG, "Gagal mengirim NOTIFICATION_WHITELIST_SYNC", e)
             }

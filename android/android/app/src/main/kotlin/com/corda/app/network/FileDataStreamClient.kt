@@ -96,7 +96,12 @@ class FileDataStreamClient(private val context: Context) {
                 val filesArray = metadata.optJSONArray("files")
 
                 Log.i(TAG, "Membuka socket data ke Mac di $host:$port untuk transfer $transferIdStr...")
-                socket = Socket()
+                socket = Socket().apply {
+                    tcpNoDelay = true
+                    sendBufferSize = 2 * 1024 * 1024
+                    receiveBufferSize = 2 * 1024 * 1024
+                    soTimeout = 30000
+                }
                 socket.connect(InetSocketAddress(host, port), 6000)
 
                 val inputStream = BufferedInputStream(socket.getInputStream(), CHUNK_SIZE)
@@ -302,7 +307,12 @@ class FileDataStreamClient(private val context: Context) {
                 Log.i(TAG, "Mengumumkan CLIPBOARD_FILE_ANNOUNCE ke Mac untuk ${file.name} (${fileSize} bytes)...")
 
                 // 2. Connect to Mac Port 54322 and stream binary chunks
-                socket = Socket()
+                socket = Socket().apply {
+                    tcpNoDelay = true
+                    sendBufferSize = 2 * 1024 * 1024
+                    receiveBufferSize = 2 * 1024 * 1024
+                    soTimeout = 30000
+                }
                 socket.connect(InetSocketAddress(host, DATA_PORT), 6000)
                 val out = BufferedOutputStream(socket.getOutputStream(), CHUNK_SIZE)
 
@@ -421,7 +431,12 @@ class FileDataStreamClient(private val context: Context) {
                 Log.i(TAG, "Mengumumkan FILE_METADATA_HEADER ke Mac...")
 
                 // 2. Connect to Mac Port 54322
-                socket = Socket()
+                socket = Socket().apply {
+                    tcpNoDelay = true
+                    sendBufferSize = 2 * 1024 * 1024
+                    receiveBufferSize = 2 * 1024 * 1024
+                    soTimeout = 30000
+                }
                 socket.connect(InetSocketAddress(host, DATA_PORT), 6000)
                 val out = BufferedOutputStream(socket.getOutputStream(), CHUNK_SIZE)
 

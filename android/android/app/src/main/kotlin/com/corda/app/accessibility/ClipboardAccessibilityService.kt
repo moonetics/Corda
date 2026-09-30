@@ -162,6 +162,16 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
                 val isImage = mimeType.startsWith("image/")
                 val label = if (isImage) "🖼️ $safeFileName" else "📁 $safeFileName"
 
+                try {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(
+                            context,
+                            if (isImage) "🖼️ Menyalin gambar ke Mac..." else "📁 Menyalin file ke Mac...",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } catch (_: Exception) {}
+
                 CordaEventBus.postClipboardEvent(
                     ClipboardCopiedEvent(
                         text = label,

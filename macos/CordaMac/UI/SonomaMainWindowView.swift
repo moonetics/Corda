@@ -34,7 +34,7 @@ public struct SonomaMainWindowView: View {
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.primary)
 
-                            Text("v1.2")
+                            Text("v1.3")
                                 .font(.system(size: 9, weight: .semibold, design: .rounded))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1.5)
@@ -382,9 +382,14 @@ struct DevicesTabView: View {
                     } else {
                         VStack(spacing: 8) {
                             ForEach(discovery.discoveredDevices) { dev in
+                                let isConnected = server.connectedPeers.contains {
+                                    (!dev.fingerprint.isEmpty && $0.fingerprint.caseInsensitiveCompare(dev.fingerprint) == .orderedSame) ||
+                                    $0.name == dev.name
+                                }
+
                                 HStack(spacing: 12) {
                                     Circle()
-                                        .fill(dev.isTrusted ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.orange)
+                                        .fill(isConnected ? Color(red: 0.20, green: 0.78, blue: 0.35) : (dev.isTrusted ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.orange))
                                         .frame(width: 8, height: 8)
 
                                     Image(systemName: "phone.fill")
@@ -394,7 +399,7 @@ struct DevicesTabView: View {
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(dev.name)
                                             .font(.system(size: 12, weight: .medium))
-                                        Text("\(dev.platform.capitalized) • \(dev.isTrusted ? "Trusted Companion" : "Ready to Pair")")
+                                        Text("\(dev.platform.capitalized) • \(isConnected ? "Connected" : (dev.isTrusted ? "Trusted Companion" : "Ready to Pair"))")
                                             .font(.system(size: 10))
                                             .foregroundStyle(.secondary)
                                     }
@@ -657,6 +662,7 @@ struct TransfersTabView: View {
 // MARK: - 3. Notifications Tab View
 struct NotificationsTabView: View {
     @ObservedObject private var server = ControlSessionServer.shared
+    @ObservedObject private var notifications = OtpNotificationManager.shared
     @AppStorage("notification_mirroring_enabled") private var mirroringEnabled: Bool = true
     @AppStorage("notification_hide_preview") private var hidePreview: Bool = false
 
@@ -671,12 +677,149 @@ struct NotificationsTabView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Notification Mirroring")
                         .font(.system(size: 20, weight: .bold))
-                    Text("Forward alerts and chat messages from whitelisted Android apps to macOS Notification Center.")
+                    Text("Forward alerts and chat messages from your Android device directly to macOS Notification Center.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
 
-                // Master Toggle Card
+                // System Notification Permission & Test Card
+                if notifications.authorizationStatus == .authorized || notifications.authorizationStatus == .provisional {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.green)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Izin Notifikasi macOS Aktif")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Corda siap memunculkan banner alert ponsel di pojok kanan atas Mac Anda.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                notifications.sendTestNotification()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "paperplane.fill")
+                                    Text("Test Notifikasi")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("Pengaturan") {
+                                notifications.openSystemNotificationSettings()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.green.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+                            )
+                    )
+                } else if notifications.authorizationStatus == .denied {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.orange)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Izin Notifikasi macOS Dinonaktifkan")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Buka Pengaturan Sistem Mac > Pemberitahuan > Corda, lalu aktifkan 'Izinkan Pemberitahuan'.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Button("Periksa Status") {
+                                notifications.checkAuthorizationStatus()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("Buka Pengaturan") {
+                                notifications.openSystemNotificationSettings()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.orange.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.orange.opacity(0.2), lineWidth: 1)
+                            )
+                    )
+                } else {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bell.badge.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Uji Coba & Izin Notifikasi macOS")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Kirim test alert untuk memastikan notifikasi banner muncul di pojok kanan atas Mac.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                notifications.requestPermission()
+                                notifications.sendTestNotification()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "paperplane.fill")
+                                    Text("Test Notifikasi")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            Button("Buka Pengaturan") {
+                                notifications.openSystemNotificationSettings()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.2), lineWidth: 1)
+                            )
+                    )
+                }
+
+                // Master & Mode Toggle Card
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -687,12 +830,80 @@ struct NotificationsTabView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Toggle("", isOn: $mirroringEnabled)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
+                        Toggle("", isOn: Binding(
+                            get: { server.isNotificationMasterEnabled },
+                            set: { val in
+                                server.isNotificationMasterEnabled = val
+                                server.sendNotificationWhitelistUpdate(masterEnabled: val)
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                     }
 
-                    if mirroringEnabled {
+                    if server.isNotificationMasterEnabled {
+                        Divider()
+
+                        // All Applications Mode Toggle
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("All App Notification")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Text("Apple Continuity")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1.5)
+                                        .background(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.15))
+                                        .clipShape(Capsule())
+                                        .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+                                }
+                                Text("Forward notifications from all installed apps automatically (Apple Continuity)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { server.isAllAppsEnabled },
+                                set: { val in
+                                    server.isAllAppsEnabled = val
+                                    server.sendNotificationWhitelistUpdate(allAppsEnabled: val)
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                        }
+
+                        if server.isAllAppsEnabled {
+                            HStack(spacing: 10) {
+                                Image(systemName: "gearshape.2.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.primary.opacity(0.06))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("All System Notification")
+                                        .font(.system(size: 12, weight: .medium))
+                                    Text("Internal OS alerts, charging status & system UI notifications (default off)")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Toggle("", isOn: Binding(
+                                    get: { server.isAllSystemEnabled },
+                                    set: { val in
+                                        server.isAllSystemEnabled = val
+                                        server.sendNotificationWhitelistUpdate(allSystemEnabled: val)
+                                    }
+                                ))
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                            }
+                            .padding(.leading, 8)
+                        }
+
                         Divider()
 
                         HStack {
@@ -720,10 +931,10 @@ struct NotificationsTabView: View {
                         )
                 )
 
-                // Source-Side Whitelist Information
+                // Source-Side Whitelist / Universal Information
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("SOURCE-SIDE SMART FILTER (ANDROID)")
+                        Text(server.isAllAppsEnabled ? "UNIVERSAL NOTIFICATION FORWARDING" : "SOURCE-SIDE SMART FILTER (ANDROID)")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.secondary)
                             .tracking(1.1)
@@ -735,8 +946,10 @@ struct NotificationsTabView: View {
                                 Circle()
                                     .fill(Color(red: 0.20, green: 0.78, blue: 0.35))
                                     .frame(width: 5, height: 5)
-                                let activeCount = server.whitelistedApps.filter { $0.isEnabled }.count
-                                Text("Synced from \(deviceName) • \(activeCount) active")
+                                let statusText = server.isAllAppsEnabled
+                                    ? "All Applications Active"
+                                    : "\(server.whitelistedApps.filter { $0.isEnabled }.count) active"
+                                Text("Synced from \(deviceName) • \(statusText)")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
@@ -748,11 +961,45 @@ struct NotificationsTabView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Notifications are filtered on your Android phone before transmission to preserve battery and local Wi-Fi bandwidth. Manage allowed apps on your phone under Corda Settings > Notification Mirroring.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        if server.isAllAppsEnabled {
+                            // Universal Mode Active Card
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.12))
+                                        .frame(width: 40, height: 40)
+                                    Image(systemName: "globe")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
+                                }
 
-                        if server.whitelistedApps.isEmpty {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("All Applications Mode Active")
+                                        .font(.system(size: 13, weight: .semibold))
+
+                                    Text("Incoming alerts from all apps on \(deviceName) are mirrored automatically. You can toggle off any app below to exclude/mute it.")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.06))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(Color(red: 0.04, green: 0.52, blue: 1.0).opacity(0.2), lineWidth: 1)
+                                    )
+                            )
+                        } else {
+                            Text("Notifications are filtered on your Android phone before transmission to preserve battery and local Wi-Fi bandwidth. Manage allowed apps on your phone or toggle them below.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if server.whitelistedApps.isEmpty && !server.isAllAppsEnabled {
                             // Empty State
                             VStack(spacing: 12) {
                                 Image(systemName: "bell.badge.slash")
@@ -762,7 +1009,7 @@ struct NotificationsTabView: View {
                                 Text("Belum Ada Aplikasi di-Whitelist")
                                     .font(.system(size: 13, weight: .semibold))
 
-                                Text("Buka aplikasi Corda di ponsel Android Anda > Tab Pengaturan > Ketuk '+ Tambah Aplikasi' untuk memilih aplikasi yang boleh meneruskan notifikasi ke Mac.")
+                                Text("Buka aplikasi Corda di ponsel Android Anda > Tab Pengaturan > Ketuk '+ Tambah Aplikasi' untuk memilih aplikasi yang boleh meneruskan notifikasi ke Mac, atau aktifkan 'All Applications Mode' di atas.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
@@ -775,10 +1022,13 @@ struct NotificationsTabView: View {
                         } else {
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 ForEach(server.whitelistedApps) { app in
+                                    let isBlacklisted = server.isAllAppsEnabled && server.blacklistedApps.contains(app.packageName)
+                                    let isAppActive = server.isAllAppsEnabled ? !isBlacklisted : app.isEnabled
+
                                     HStack(spacing: 10) {
-                                        Image(systemName: app.isEnabled ? "checkmark.seal.fill" : "pause.circle.fill")
+                                        Image(systemName: isAppActive ? "checkmark.seal.fill" : "pause.circle.fill")
                                             .font(.system(size: 14))
-                                            .foregroundStyle(app.isEnabled ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary)
+                                            .foregroundStyle(isAppActive ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary)
 
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(app.appName)
@@ -792,15 +1042,30 @@ struct NotificationsTabView: View {
 
                                         Spacer()
 
-                                        Text(app.isEnabled ? "Active" : "Paused")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundStyle(app.isEnabled ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(
-                                                (app.isEnabled ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary).opacity(0.12)
-                                            )
-                                            .clipShape(Capsule())
+                                        Button(action: {
+                                            if server.isAllAppsEnabled {
+                                                server.sendNotificationWhitelistUpdate(
+                                                    packageToBlacklist: app.packageName,
+                                                    packageBlacklisted: !isBlacklisted
+                                                )
+                                            } else {
+                                                server.sendNotificationWhitelistUpdate(
+                                                    packageToToggle: app.packageName,
+                                                    packageEnabled: !app.isEnabled
+                                                )
+                                            }
+                                        }) {
+                                            Text(isAppActive ? "Active" : (server.isAllAppsEnabled ? "Muted" : "Paused"))
+                                                .font(.system(size: 9, weight: .semibold))
+                                                .foregroundStyle(isAppActive ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(
+                                                    (isAppActive ? Color(red: 0.20, green: 0.78, blue: 0.35) : Color.secondary).opacity(0.12)
+                                                )
+                                                .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                     .padding(10)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -818,6 +1083,12 @@ struct NotificationsTabView: View {
                 }
             }
             .padding(24)
+        }
+        .onAppear {
+            notifications.checkAuthorizationStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            notifications.checkAuthorizationStatus()
         }
     }
 }

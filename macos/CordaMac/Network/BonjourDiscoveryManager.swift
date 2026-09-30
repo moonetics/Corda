@@ -213,18 +213,42 @@ public final class BonjourDiscoveryManager: ObservableObject {
 
     private func handleBrowseResults(_ results: Set<NWBrowser.Result>) {
         var devices: [DiscoveredDevice] = []
+        let localComputerName = Host.current().localizedName ?? "Mac"
 
         for result in results {
-            guard case let .bonjour(txt) = result.metadata else { continue }
+            // Extract endpoint service name if available
+            var endpointServiceName = "Remote Device"
+            if case let .service(name, _, _, _) = result.endpoint {
+                endpointServiceName = name
+            }
 
-            let devId = txt["dev_id"] ?? UUID().uuidString
-            // Skip our own advertised device
-            if devId == self.localDeviceId { continue }
+            var cleanName = endpointServiceName
+            if cleanName.hasPrefix("Corda-") {
+                cleanName = String(cleanName.dropFirst(6))
+            }
 
-            let name = txt["name"] ?? "Remote Device"
-            let platform = txt["model"] ?? "unknown"
-            let fingerprint = txt["fp"] ?? ""
-            let isTrusted = KeychainManager.shared.isFingerprintTrusted(fingerprint)
+            var devId = UUID().uuidString
+            var name = cleanName
+            var platform = "Android"
+            var fingerprint = ""
+
+            if case let .bonjour(txt) = result.metadata {
+                if let id = txt["dev_id"], !id.isEmpty { devId = id }
+                if let n = txt["name"], !n.isEmpty { name = n }
+                if let m = txt["model"], !m.isEmpty { platform = m }
+                if let fp = txt["fp"], !fp.isEmpty { fingerprint = fp }
+            }
+
+            // Skip our own advertised Mac
+            if devId == self.localDeviceId ||
+               name == localComputerName ||
+               name == "Corda-\(localComputerName)" ||
+               endpointServiceName == "Corda-\(localComputerName)" ||
+               endpointServiceName == localComputerName {
+                continue
+            }
+
+            let isTrusted = !fingerprint.isEmpty && KeychainManager.shared.isFingerprintTrusted(fingerprint)
 
             devices.append(
                 DiscoveredDevice(
@@ -239,9 +263,20 @@ public final class BonjourDiscoveryManager: ObservableObject {
             )
         }
 
+        // Deduplicate devices by fingerprint or name
+        var seenKeys = Set<String>()
+        var uniqueDevices: [DiscoveredDevice] = []
+        for dev in devices {
+            let key = dev.fingerprint.isEmpty ? dev.name : dev.fingerprint
+            if !seenKeys.contains(key) {
+                seenKeys.insert(key)
+                uniqueDevices.append(dev)
+            }
+        }
+
         DispatchQueue.main.async {
-            self.discoveredDevices = devices
-            if !devices.isEmpty {
+            self.discoveredDevices = uniqueDevices
+            if !uniqueDevices.isEmpty {
                 self.isPossibleAPIsolation = false
             }
         }

@@ -15,6 +15,7 @@ class PermissionStatusModel {
   });
 
   bool get isAllGranted => accessibility && batteryIgnored && notification && overlay;
+  bool get notificationListener => notification;
 
   factory PermissionStatusModel.fromMap(Map<dynamic, dynamic> map) {
     return PermissionStatusModel(
@@ -441,6 +442,54 @@ class PlatformBridge {
     }
   }
 
+  Future<bool> setNotificationAllAppsEnabled(bool enabled) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setNotificationAllAppsEnabled', {'enabled': enabled});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> setNotificationAllSystemEnabled(bool enabled) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setNotificationAllSystemEnabled', {'enabled': enabled});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> setNotificationAppBlacklisted(String packageName, bool blacklisted) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setNotificationAppBlacklisted', {
+        'packageName': packageName,
+        'blacklisted': blacklisted,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> openNotificationListenerSettings() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('openNotificationListenerSettings');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> sendTestNotification() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('sendTestNotification');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> removeNotificationPackage(String packageName) async {
     try {
       final res = await _channel.invokeMethod<bool>('removeNotificationPackage', {
@@ -498,17 +547,27 @@ class NotificationAppModel {
 
 class NotificationSettingsModel {
   final bool masterEnabled;
+  final bool allAppsEnabled;
+  final bool allSystemEnabled;
+  final List<String> blacklistedApps;
   final List<NotificationAppModel> apps;
 
   const NotificationSettingsModel({
     required this.masterEnabled,
+    this.allAppsEnabled = false,
+    this.allSystemEnabled = false,
+    this.blacklistedApps = const [],
     required this.apps,
   });
 
   factory NotificationSettingsModel.fromMap(Map<dynamic, dynamic> map) {
     final rawApps = map['apps'] as List<dynamic>? ?? [];
+    final rawBlacklisted = map['blacklistedApps'] as List<dynamic>? ?? [];
     return NotificationSettingsModel(
       masterEnabled: map['masterEnabled'] as bool? ?? true,
+      allAppsEnabled: map['allAppsEnabled'] as bool? ?? false,
+      allSystemEnabled: map['allSystemEnabled'] as bool? ?? false,
+      blacklistedApps: rawBlacklisted.map((e) => e.toString()).toList(),
       apps: rawApps.map((e) => NotificationAppModel.fromMap(e as Map<dynamic, dynamic>)).toList(),
     );
   }

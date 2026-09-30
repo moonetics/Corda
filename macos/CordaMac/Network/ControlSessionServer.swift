@@ -65,6 +65,9 @@ public final class ControlSessionServer: ObservableObject {
     @Published public var latestPowerSource: String = "battery"
     @Published public var whitelistedApps: [MirroredAppInfo] = []
     @Published public var isNotificationMasterEnabled: Bool = true
+    @Published public var isAllAppsEnabled: Bool = false
+    @Published public var isAllSystemEnabled: Bool = false
+    @Published public var blacklistedApps: Set<String> = []
     @Published public var lastWhitelistSyncTime: Date? = nil
 
     private let queue = DispatchQueue(label: "com.corda.mac.control.server", qos: .userInitiated)
@@ -340,6 +343,9 @@ public final class ControlSessionServer: ObservableObject {
     private func handleNotificationWhitelistSync(_ json: [String: Any], from connection: NWConnection, peer: ConnectedPeer) {
         guard peer.isTrusted else { return }
         let masterEnabled = (json["master_enabled"] as? Bool) ?? true
+        let allApps = (json["all_apps_enabled"] as? Bool) ?? false
+        let allSystem = (json["all_system_enabled"] as? Bool) ?? false
+        let rawBlacklisted = (json["blacklisted_apps"] as? [String]) ?? []
         let rawApps = (json["apps"] as? [[String: Any]]) ?? []
 
         let apps: [MirroredAppInfo] = rawApps.compactMap { item in
@@ -351,11 +357,49 @@ public final class ControlSessionServer: ObservableObject {
 
         DispatchQueue.main.async {
             self.isNotificationMasterEnabled = masterEnabled
+            self.isAllAppsEnabled = allApps
+            self.isAllSystemEnabled = allSystem
+            self.blacklistedApps = Set(rawBlacklisted)
             self.whitelistedApps = apps
             self.lastWhitelistSyncTime = Date()
             #if DEBUG
-            print("[ControlServer] Synced \(apps.count) whitelisted apps from \(peer.name)")
+            print("[ControlServer] Synced \(apps.count) apps, allApps=\(allApps), blacklisted=\(rawBlacklisted.count) from \(peer.name)")
             #endif
+        }
+    }
+
+    /// Sends updated notification whitelist / universal mode settings to Android.
+    public func sendNotificationWhitelistUpdate(
+        masterEnabled: Bool? = nil,
+        allAppsEnabled: Bool? = nil,
+        allSystemEnabled: Bool? = nil,
+        packageToToggle: String? = nil,
+        packageEnabled: Bool? = nil,
+        packageToBlacklist: String? = nil,
+        packageBlacklisted: Bool? = nil
+    ) {
+        var payload: [String: Any] = [
+            "type": "NOTIFICATION_WHITELIST_UPDATE",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        if let master = masterEnabled { payload["master_enabled"] = master }
+        if let allApps = allAppsEnabled { payload["all_apps_enabled"] = allApps }
+        if let allSys = allSystemEnabled { payload["all_system_enabled"] = allSys }
+        if let pkg = packageToToggle, let en = packageEnabled {
+            payload["package_to_toggle"] = pkg
+            payload["package_enabled"] = en
+        }
+        if let pkg = packageToBlacklist, let bl = packageBlacklisted {
+            payload["package_to_blacklist"] = pkg
+            payload["package_blacklisted"] = bl
+        }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let jsonStr = String(data: data, encoding: .utf8) else { return }
+
+        let lineData = Data((jsonStr + "\n").utf8)
+        for peer in connectedPeers where peer.isTrusted {
+            peer.connection.send(content: lineData, completion: .idempotent)
         }
     }
 
