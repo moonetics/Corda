@@ -51,7 +51,7 @@
         <!-- Floating Text Selection Menu: 'Send to Mac (Corda)' -->
         <activity
             android:name=".actions.ProcessTextActivity"
-            android:label="Kirim ke Mac (Corda)"
+            android:label="Send to Mac (Corda)"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:noHistory="true"
@@ -93,6 +93,17 @@
             android:name=".services.CordaForegroundService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
+
+        <!-- Native Notification Listener Service for Apple Continuity Alert Mirroring -->
+        <service
+            android:name=".notifications.CordaNotificationListenerService"
+            android:label="Corda"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- FileProvider for universal cross-app clipboard file & image sharing -->
         <provider

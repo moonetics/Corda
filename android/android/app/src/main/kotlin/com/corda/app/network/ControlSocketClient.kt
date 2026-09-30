@@ -165,12 +165,12 @@ class ControlSocketClient(private val context: Context) {
                         sendNotificationWhitelistSync()
 
                         withContext(Dispatchers.Main) {
-                            onResult?.invoke(true, "Pairing berhasil!")
+                            onResult?.invoke(true, "Pairing successful")
                         }
                         return@launch
                     } else {
-                        val reason = respJson.optString("reason", "Pairing ditolak oleh Mac.")
-                        Log.w(TAG, "Pairing GAGAL: status=$status, reason=$reason")
+                        val reason = respJson.optString("reason", "Pairing declined by Mac")
+                        Log.w(TAG, "Pairing FAILED: status=$status, reason=$reason")
                         disconnect()
                         withContext(Dispatchers.Main) {
                             onResult?.invoke(false, reason)
@@ -180,14 +180,14 @@ class ControlSocketClient(private val context: Context) {
                 } else {
                     disconnect()
                     withContext(Dispatchers.Main) {
-                        onResult?.invoke(false, "Koneksi terputus saat menunggu respon pairing.")
+                        onResult?.invoke(false, "Connection lost while waiting for pairing response")
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error saat pairing ke $host:$port", e)
+                Log.e(TAG, "Error while pairing to $host:$port", e)
                 disconnect()
                 withContext(Dispatchers.Main) {
-                    onResult?.invoke(false, e.localizedMessage ?: "Gagal terhubung ke Mac")
+                    onResult?.invoke(false, e.localizedMessage ?: "Failed to connect to Mac")
                 }
             }
         }

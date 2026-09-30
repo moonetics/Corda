@@ -86,27 +86,67 @@ public struct SonomaMainWindowView: View {
                 Spacer()
 
                 // Sidebar Footer: Disk Capacity & Security
-                VStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Divider()
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 14)
 
                     // Storage widget
-                    HStack(spacing: 8) {
-                        Image(systemName: "internaldrive.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "internaldrive.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Downloads Storage")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Mac Storage (Macintosh HD)")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.primary)
 
-                            Text(getDiskCapacityString())
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundStyle(.primary)
+                                Text("Corda Incoming Transfers")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
                         }
 
-                        Spacer()
+                        if let info = getDiskStorageInfo() {
+                            // Apple-style horizontal capacity progress bar
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(Color.primary.opacity(0.08))
+                                        .frame(height: 5)
+
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(red: 0.04, green: 0.52, blue: 1.0), Color(red: 0.35, green: 0.34, blue: 0.84)],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                        .frame(width: max(4, geo.size.width * CGFloat(info.usedFraction)), height: 5)
+                                }
+                            }
+                            .frame(height: 5)
+
+                            HStack {
+                                Text(String(format: "%.1f GB Free of %.1f GB", info.freeGB, info.totalGB))
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                Text("\(info.usedPercentInt)% used")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text("Available on Macintosh HD")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(.horizontal, 16)
 
@@ -150,15 +190,38 @@ public struct SonomaMainWindowView: View {
         }
     }
 
-    private func getDiskCapacityString() -> String {
+    private struct DiskStorageInfo {
+        let usedGB: Double
+        let freeGB: Double
+        let totalGB: Double
+        let usedFraction: Double
+        let usedPercentInt: Int
+    }
+
+    private func getDiskStorageInfo() -> DiskStorageInfo? {
         let url = fileStreaming.defaultDownloadsFolder
         if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]),
            let freeBytes = values.volumeAvailableCapacityForImportantUsage,
-           let totalBytes = values.volumeTotalCapacity {
+           let totalBytes = values.volumeTotalCapacity,
+           totalBytes > 0 {
             let freeGB = Double(freeBytes) / 1_073_741_824.0
             let totalGB = Double(totalBytes) / 1_073_741_824.0
             let usedGB = max(0, totalGB - freeGB)
-            return String(format: "%.1f GB Used • %.1f GB Free", usedGB, freeGB)
+            let fraction = max(0.0, min(1.0, usedGB / totalGB))
+            return DiskStorageInfo(
+                usedGB: usedGB,
+                freeGB: freeGB,
+                totalGB: totalGB,
+                usedFraction: fraction,
+                usedPercentInt: Int(fraction * 100)
+            )
+        }
+        return nil
+    }
+
+    private func getDiskCapacityString() -> String {
+        if let info = getDiskStorageInfo() {
+            return String(format: "%.1f GB Used • %.1f GB Free", info.usedGB, info.freeGB)
         }
         return "Available on Macintosh HD"
     }
@@ -266,7 +329,7 @@ struct DevicesTabView: View {
                                     .clipShape(Capsule())
                                 }
 
-                                Text("Port 54321 (Control) & 54322 (Data Stream) • TLS 1.3")
+                                Text("Apple Continuity • Local Wi-Fi • End-to-End Encrypted")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                             }
@@ -331,7 +394,7 @@ struct DevicesTabView: View {
                         Text("No Android Companion Connected")
                             .font(.system(size: 15, weight: .semibold))
 
-                        Text("Make sure both your Mac and Android phone are on the same Wi-Fi network and Corda is running on both.")
+                        Text("Make sure both your Mac and Android companion are connected to the same Wi-Fi network.")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -369,7 +432,7 @@ struct DevicesTabView: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .scaleEffect(0.7)
-                            Text("Searching for nearby Corda devices via Bonjour mDNS...")
+                            Text("Searching for nearby devices...")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -690,11 +753,11 @@ struct NotificationsTabView: View {
                             .foregroundStyle(Color.green)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Izin Notifikasi macOS Aktif")
+                            Text("macOS Notifications Active")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.primary)
 
-                            Text("Corda siap memunculkan banner alert ponsel di pojok kanan atas Mac Anda.")
+                            Text("Corda will deliver alert banners to the top-right corner of your screen.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -707,13 +770,13 @@ struct NotificationsTabView: View {
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "paperplane.fill")
-                                    Text("Test Notifikasi")
+                                    Text("Test Notification")
                                 }
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
 
-                            Button("Pengaturan") {
+                            Button("Settings") {
                                 notifications.openSystemNotificationSettings()
                             }
                             .buttonStyle(.bordered)
@@ -736,11 +799,11 @@ struct NotificationsTabView: View {
                             .foregroundStyle(Color.orange)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Izin Notifikasi macOS Dinonaktifkan")
+                            Text("macOS Notifications Disabled")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.primary)
 
-                            Text("Buka Pengaturan Sistem Mac > Pemberitahuan > Corda, lalu aktifkan 'Izinkan Pemberitahuan'.")
+                            Text("Open Mac System Settings > Notifications > Corda, then turn on 'Allow Notifications'.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -748,13 +811,13 @@ struct NotificationsTabView: View {
                         Spacer()
 
                         HStack(spacing: 8) {
-                            Button("Periksa Status") {
+                            Button("Check Status") {
                                 notifications.checkAuthorizationStatus()
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
 
-                            Button("Buka Pengaturan") {
+                            Button("Open Settings") {
                                 notifications.openSystemNotificationSettings()
                             }
                             .buttonStyle(.bordered)
@@ -777,11 +840,11 @@ struct NotificationsTabView: View {
                             .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Uji Coba & Izin Notifikasi macOS")
+                            Text("macOS Notification Verification")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.primary)
 
-                            Text("Kirim test alert untuk memastikan notifikasi banner muncul di pojok kanan atas Mac.")
+                            Text("Send a test alert to verify banner notifications appear on your Mac.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -795,13 +858,13 @@ struct NotificationsTabView: View {
                             }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "paperplane.fill")
-                                    Text("Test Notifikasi")
+                                    Text("Test Notification")
                                 }
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
 
-                            Button("Buka Pengaturan") {
+                            Button("Open Settings") {
                                 notifications.openSystemNotificationSettings()
                             }
                             .buttonStyle(.bordered)
@@ -1006,10 +1069,10 @@ struct NotificationsTabView: View {
                                     .font(.system(size: 28))
                                     .foregroundStyle(.secondary.opacity(0.6))
 
-                                Text("Belum Ada Aplikasi di-Whitelist")
+                                Text("No Applications Selected")
                                     .font(.system(size: 13, weight: .semibold))
 
-                                Text("Buka aplikasi Corda di ponsel Android Anda > Tab Pengaturan > Ketuk '+ Tambah Aplikasi' untuk memilih aplikasi yang boleh meneruskan notifikasi ke Mac, atau aktifkan 'All Applications Mode' di atas.")
+                                Text("Open Corda on your Android companion > Settings to choose which applications can forward notifications to your Mac, or enable All App Notification.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)

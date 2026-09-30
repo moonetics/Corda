@@ -160,13 +160,13 @@ class ClipboardAccessibilityService : AccessibilityService(), ClipboardManager.O
                 triggerHapticFeedback(context)
 
                 val isImage = mimeType.startsWith("image/")
-                val label = if (isImage) "🖼️ $safeFileName" else "📁 $safeFileName"
+                val label = "[File: $safeFileName]"
 
                 try {
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         android.widget.Toast.makeText(
                             context,
-                            if (isImage) "🖼️ Menyalin gambar ke Mac..." else "📁 Menyalin file ke Mac...",
+                            if (isImage) "Copying image to Mac..." else "Copying file to Mac...",
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }

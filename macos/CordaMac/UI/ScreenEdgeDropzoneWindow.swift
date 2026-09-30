@@ -259,11 +259,11 @@ struct DropzoneVisualContentView: View {
                         .font(.system(size: 36))
                         .foregroundStyle(Color(red: 0.20, green: 0.78, blue: 0.35))
 
-                    Text("Terkirim!")
+                    Text("Sent!")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.primary)
 
-                    Text("Mentransfer ke \(model.connectedDeviceName)")
+                    Text("Transferred to \(model.connectedDeviceName)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -280,7 +280,7 @@ struct DropzoneVisualContentView: View {
                     }
 
                     VStack(spacing: 4) {
-                        Text(model.isDragging ? "Lepas untuk Kirim" : "Corda Dropzone")
+                        Text(model.isDragging ? "Release to Send" : "Corda Dropzone")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
 
@@ -296,7 +296,7 @@ struct DropzoneVisualContentView: View {
                         }
                     }
 
-                    Text("Drop berkas di sini untuk mengirim ke Android secara instan")
+                    Text("Drop files here to send to your companion instantly")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

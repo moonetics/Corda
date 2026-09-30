@@ -411,7 +411,7 @@ class CordaForegroundService : Service() {
         serviceScope.launch {
             CordaEventBus.clipboardEvents.collect { event ->
                 // Filter out internal synthetic file/folder labels from remote broadcast
-                if (event.text.startsWith("🖼️ ") || event.text.startsWith("📁 ")) {
+                if (event.text.startsWith("[File: ") || event.text.startsWith("🖼️ ") || event.text.startsWith("📁 ")) {
                     Log.d(TAG, "Mengabaikan label berkas internal dari siaran remote socket: '${event.text}'")
                     return@collect
                 }

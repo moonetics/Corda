@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
                         "accessibility" to isAccessibilityServiceEnabled(this, ClipboardAccessibilityService::class.java),
                         "batteryIgnored" to isBatteryOptimizationIgnored(this),
                         "notification" to areNotificationsEnabled(this),
+                        "notificationListener" to isNotificationListenerEnabled(this),
                         "overlay" to Settings.canDrawOverlays(this)
                     )
                     result.success(status)
@@ -114,7 +115,7 @@ class MainActivity : FlutterActivity() {
                     val fingerprint = call.argument<String>("fingerprint") ?: ""
 
                     if (host.isEmpty() || pin.isEmpty()) {
-                        result.error("INVALID_ARGS", "Host dan PIN wajib diisi", null)
+                        result.error("INVALID_ARGS", "Host and PIN are required", null)
                         return@setMethodCallHandler
                     }
 
@@ -137,7 +138,7 @@ class MainActivity : FlutterActivity() {
                     val filePath = call.argument<String>("filePath") ?: ""
                     val file = java.io.File(filePath)
                     if (!file.exists()) {
-                        result.error("FILE_NOT_FOUND", "Berkas tidak ditemukan: $filePath", null)
+                        result.error("FILE_NOT_FOUND", "File not found: $filePath", null)
                         return@setMethodCallHandler
                     }
                     val service = CordaForegroundService.instance
@@ -146,7 +147,7 @@ class MainActivity : FlutterActivity() {
                         socketClient.sendFiles(listOf(file))
                         result.success(true)
                     } else {
-                        result.error("NOT_CONNECTED", "Belum terhubung dengan Mac.", null)
+                        result.error("NOT_CONNECTED", "Not connected to Mac.", null)
                     }
                 }
                 "getTrustedDevices" -> {
@@ -197,7 +198,7 @@ class MainActivity : FlutterActivity() {
                             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                             addCategory(Intent.CATEGORY_OPENABLE)
                         }
-                        startActivityForResult(Intent.createChooser(intent, "Pilih Berkas"), FILE_PICKER_REQUEST_CODE)
+                        startActivityForResult(Intent.createChooser(intent, "Select File"), FILE_PICKER_REQUEST_CODE)
                     } catch (e: Exception) {
                         pendingFilePickerResult = null
                         result.error("PICKER_ERROR", e.message, null)
@@ -254,7 +255,7 @@ class MainActivity : FlutterActivity() {
                         CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
                         result.success(true)
                     } else {
-                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                        result.error("INVALID_ARGS", "Package name cannot be empty", null)
                     }
                 }
                 "openNotificationListenerSettings" -> {
@@ -272,7 +273,7 @@ class MainActivity : FlutterActivity() {
                         packageName = "com.whatsapp",
                         appName = "WhatsApp",
                         title = "Corda Continuity",
-                        text = "🔔 Pesan uji coba berhasil dikirim dari HP Android Anda ke Mac!"
+                        text = "Test notification successfully delivered to your Mac."
                     )
                     result.success(true)
                 }
@@ -320,7 +321,7 @@ class MainActivity : FlutterActivity() {
                         CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
                         result.success(true)
                     } else {
-                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                        result.error("INVALID_ARGS", "Package name cannot be empty", null)
                     }
                 }
                 "removeNotificationPackage" -> {
@@ -330,7 +331,7 @@ class MainActivity : FlutterActivity() {
                         CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
                         result.success(true)
                     } else {
-                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                        result.error("INVALID_ARGS", "Package name cannot be empty", null)
                     }
                 }
                 "setNotificationMasterEnabled" -> {
@@ -347,7 +348,7 @@ class MainActivity : FlutterActivity() {
                         CordaForegroundService.instance?.socketClient?.sendNotificationWhitelistSync()
                         result.success(true)
                     } else {
-                        result.error("INVALID_ARGS", "Nama package tidak boleh kosong", null)
+                        result.error("INVALID_ARGS", "Package name cannot be empty", null)
                     }
                 }
                 else -> result.notImplemented()
@@ -595,6 +596,21 @@ class MainActivity : FlutterActivity() {
 
     private fun areNotificationsEnabled(context: Context): Boolean {
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    private fun isNotificationListenerEnabled(context: Context): Boolean {
+        val packageName = context.packageName
+        val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+        if (!flat.isNullOrEmpty()) {
+            val names = flat.split(":")
+            for (name in names) {
+                val cn = ComponentName.unflattenFromString(name)
+                if (cn != null && cn.packageName == packageName) {
+                    return true
+                }
+            }
+        }
+        return NotificationManagerCompat.getEnabledListenerPackages(context).contains(packageName)
     }
 
     private fun triggerMicroHaptic() {

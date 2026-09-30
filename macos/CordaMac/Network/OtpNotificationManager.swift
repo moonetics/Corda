@@ -77,8 +77,8 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
     /// Dispatch a test notification to verify macOS notification center delivery
     public func sendTestNotification() {
         let content = UNMutableNotificationContent()
-        content.title = "WhatsApp: Corda Continuity"
-        content.body = "🔔 Berhasil! Notifikasi ponsel terhubung dan tampil di Mac Anda."
+        content.title = "Corda Continuity"
+        content.body = "Test notification received from your companion."
         content.sound = .default
         content.userInfo = [
             "type": "NOTIFICATION_TEST",
@@ -103,7 +103,7 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
 
             // Run AppleScript alert fallback to ensure banner is 100% visible on macOS desktop
             DispatchQueue.main.async {
-                let scriptSource = "display notification \"🔔 Berhasil! Notifikasi ponsel terhubung dan tampil di Mac Anda.\" with title \"WhatsApp: Corda Continuity\" sound name \"Glass\""
+                let scriptSource = "display notification \"Test notification received from your companion.\" with title \"Corda Continuity\" sound name \"Glass\""
                 if let script = NSAppleScript(source: scriptSource) {
                     var errorInfo: NSDictionary?
                     script.executeAndReturnError(&errorInfo)
@@ -122,8 +122,8 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "🔑 Kode OTP Terdeteksi (\(serviceName))"
-        content.body = "\(code) (Kedaluwarsa dalam \(expiresIn) detik)"
+        content.title = "Security Code (\(serviceName))"
+        content.body = "\(code) (Expires in \(expiresIn) seconds)"
         content.sound = .default
         content.categoryIdentifier = Self.categoryOtp
         content.userInfo = [
@@ -163,7 +163,7 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
         guard isEnabled else { return }
 
         let hidePreview = UserDefaults.standard.bool(forKey: "notification_hide_preview")
-        let displayBody = hidePreview ? "Pesan Baru Diterima" : text
+        let displayBody = hidePreview ? "New Message" : text
         let displayTitle = title.isEmpty ? appName : "\(appName): \(title)"
 
         let content = UNMutableNotificationContent()
@@ -213,8 +213,8 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
             if lastAlertedBatteryLevel == nil || (lastAlertedBatteryLevel! > 20) {
                 lastAlertedBatteryLevel = level
                 postLocalAlert(
-                    title: "🪫 Baterai Lemah (\(level)%)",
-                    body: "Baterai \(deviceName) tersisa \(level)%. Segera hubungkan ke pengisi daya."
+                    title: "Low Battery (\(level)%)",
+                    body: "\(deviceName) battery is at \(level)%. Connect to power."
                 )
             }
         } else if isCharging && level == 100 {
@@ -223,8 +223,8 @@ public final class OtpNotificationManager: NSObject, ObservableObject, UNUserNot
                 lastAlertedBatteryLevel = 100
                 lastAlertedChargingState = true
                 postLocalAlert(
-                    title: "⚡ Baterai Terisi Penuh (100%)",
-                    body: "Baterai \(deviceName) telah terisi 100%. Anda dapat mencabut pengisi daya."
+                    title: "Battery Fully Charged (100%)",
+                    body: "\(deviceName) is fully charged."
                 )
             }
         } else if !isCharging {

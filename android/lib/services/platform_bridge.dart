@@ -5,23 +5,25 @@ class PermissionStatusModel {
   final bool accessibility;
   final bool batteryIgnored;
   final bool notification;
+  final bool notificationListener;
   final bool overlay;
 
   const PermissionStatusModel({
     required this.accessibility,
     required this.batteryIgnored,
     required this.notification,
+    this.notificationListener = false,
     this.overlay = false,
   });
 
-  bool get isAllGranted => accessibility && batteryIgnored && notification && overlay;
-  bool get notificationListener => notification;
+  bool get isAllGranted => accessibility && batteryIgnored && notification && notificationListener && overlay;
 
   factory PermissionStatusModel.fromMap(Map<dynamic, dynamic> map) {
     return PermissionStatusModel(
       accessibility: map['accessibility'] as bool? ?? false,
       batteryIgnored: map['batteryIgnored'] as bool? ?? false,
       notification: map['notification'] as bool? ?? false,
+      notificationListener: map['notificationListener'] as bool? ?? (map['notification'] as bool? ?? false),
       overlay: map['overlay'] as bool? ?? false,
     );
   }

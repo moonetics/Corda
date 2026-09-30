@@ -226,13 +226,13 @@ class FileDataStreamClient(private val context: Context) {
                         tempFile = null
                         currentFileIdx++
                     } else if (msgType == 0x03) { // TRANSFER_COMPLETE
-                        Log.i(TAG, "Seluruh file berhasil diterima!")
+                        Log.i(TAG, "All files received successfully!")
                         triggerSuccessHaptic()
 
                         CordaEventBus.postTransferEvent(
                             TransferProgressEvent(
                                 transferId = transferIdStr,
-                                fileName = "Transfer Selesai",
+                                fileName = "Transfer Complete",
                                 direction = "incoming",
                                 fileIndex = totalFiles,
                                 totalFiles = totalFiles,
@@ -245,11 +245,11 @@ class FileDataStreamClient(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error dalam stream biner receiver: ${e.message}", e)
+                Log.e(TAG, "Error in binary receiver stream: ${e.message}", e)
                 CordaEventBus.postTransferEvent(
                     TransferProgressEvent(
                         transferId = transferIdStr,
-                        fileName = "Transfer Terputus",
+                        fileName = "Transfer Interrupted",
                         direction = "incoming",
                         fileIndex = currentFileIdx,
                         totalFiles = totalFiles,
@@ -665,7 +665,7 @@ class FileDataStreamClient(private val context: Context) {
             triggerTickHaptic()
 
             val isImage = mimeType.startsWith("image/")
-            val label = if (isImage) "🖼️ ${file.name}" else "📁 ${file.name}"
+            val label = "[File: ${file.name}]"
 
             CordaEventBus.postClipboardEvent(
                 ClipboardCopiedEvent(

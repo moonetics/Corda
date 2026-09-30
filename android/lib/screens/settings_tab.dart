@@ -473,7 +473,7 @@ class _SettingsTabState extends State<SettingsTab> {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('🔔 Test notifikasi dikirim ke Mac!'),
+                            content: Text('Test notification delivered to Mac'),
                             duration: Duration(seconds: 2),
                             behavior: SnackBarBehavior.floating,
                           ),
@@ -488,7 +488,7 @@ class _SettingsTabState extends State<SettingsTab> {
                           Icon(CupertinoIcons.paperplane_fill, size: 12, color: CordaTheme.accentBlue),
                           SizedBox(width: 4),
                           Text(
-                            'Test Notifikasi',
+                            'Test Notification',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -644,8 +644,8 @@ class _SettingsTabState extends State<SettingsTab> {
                         children: [
                           Text(
                             _notificationSettings.allAppsEnabled
-                                ? 'PENGECEUALIAN (${_notificationSettings.blacklistedApps.length} DIKECUALIKAN)'
-                                : 'APLIKASI TERDAFTAR (${_notificationSettings.apps.length})',
+                                ? 'EXCLUSIONS (${_notificationSettings.blacklistedApps.length} EXCLUDED)'
+                                : 'ALLOWED APPS (${_notificationSettings.apps.length})',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -669,7 +669,7 @@ class _SettingsTabState extends State<SettingsTab> {
                                   const Icon(CupertinoIcons.plus, size: 12, color: CordaTheme.accentBlue),
                                   const SizedBox(width: 4),
                                   Text(
-                                    _notificationSettings.allAppsEnabled ? 'Tambah Pengecualian' : 'Tambah Aplikasi',
+                                    _notificationSettings.allAppsEnabled ? 'Add Exclusion' : 'Add Application',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
@@ -689,8 +689,8 @@ class _SettingsTabState extends State<SettingsTab> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Text(
                             _notificationSettings.blacklistedApps.isEmpty
-                                ? 'Seluruh notifikasi aplikasi aktif secara universal. Ketuk "+ Tambah Pengecualian" di atas jika ada aplikasi yang ingin Anda kecualikan/bungkam.'
-                                : 'Aplikasi di bawah ini dikecualikan (dibungkam) dan tidak akan diteruskan ke Mac:',
+                                ? 'All application notifications are forwarded automatically. Tap "+ Add Exclusion" to silence specific apps.'
+                                : 'The following apps are excluded (silenced) and will not be forwarded to Mac:',
                             style: const TextStyle(fontSize: 11, color: CordaTheme.textSecondary),
                           ),
                         ),
@@ -713,12 +713,12 @@ class _SettingsTabState extends State<SettingsTab> {
                                 ),
                                 const SizedBox(height: 10),
                                 const Text(
-                                  'Belum ada aplikasi yang dipilih',
+                                  'No applications selected',
                                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.white),
                                 ),
                                 const SizedBox(height: 4),
                                 const Text(
-                                  'Ketuk "+ Tambah Aplikasi" untuk memilih aplikasi yang boleh meneruskan notifikasi ke Mac.',
+                                  'Tap "+ Add Application" to choose apps allowed to forward notifications to Mac.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(fontSize: 11, color: CordaTheme.textSecondary, height: 1.3),
                                 ),
@@ -773,7 +773,7 @@ class _SettingsTabState extends State<SettingsTab> {
                                       ),
                                       Text(
                                         _notificationSettings.allAppsEnabled
-                                            ? (isBlacklisted ? 'Dikecualikan (Bungkam)' : 'Aktif Universal')
+                                            ? (isBlacklisted ? 'Silenced (Excluded)' : 'Forwarding Alerts')
                                             : app.packageName,
                                         style: TextStyle(
                                           fontSize: 10,
@@ -828,8 +828,8 @@ class _SettingsTabState extends State<SettingsTab> {
                       icon: CupertinoIcons.bell_fill,
                       title: 'Notification Access',
                       subtitle: _permissions.notificationListener
-                          ? 'Automatic notification capture active'
-                          : 'Tap to grant in notification access settings',
+                          ? 'Alert mirroring active in background'
+                          : 'Enable in system settings to mirror alerts to Mac',
                       isPositive: _permissions.notificationListener,
                       statusText: _permissions.notificationListener ? 'Active' : 'Setup',
                       onTap: () async {
@@ -841,61 +841,61 @@ class _SettingsTabState extends State<SettingsTab> {
                     const SizedBox(height: 12),
                     _buildServiceTile(
                       icon: CupertinoIcons.waveform_path_ecg,
-                      title: 'Background Sync',
-                      subtitle: _isServiceRunning ? 'Syncing actively in background' : 'Background service paused',
-                      isPositive: _isServiceRunning,
-                      statusText: _isServiceRunning ? 'Active' : 'Paused',
-                      trailing: CupertinoSwitch(
-                        value: _isServiceRunning,
-                        activeTrackColor: CordaTheme.accentBlue,
-                        onChanged: (val) => _toggleService(val),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 12),
-                    _buildServiceTile(
-                      icon: CupertinoIcons.doc_on_clipboard_fill,
-                      title: 'Clipboard Sync',
-                      subtitle: _permissions.accessibility
-                          ? 'Automatic copy detection active'
-                          : 'Tap to enable in accessibility settings',
-                      isPositive: _permissions.accessibility,
-                      statusText: _permissions.accessibility ? 'Active' : 'Setup',
-                      onTap: () async {
-                        await PlatformBridge.instance.openAccessibilitySettings();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 12),
-                    _buildServiceTile(
-                      icon: CupertinoIcons.layers_alt_fill,
-                      title: 'Quick Sync',
-                      subtitle: _permissions.overlay
-                          ? 'Instant in-app copy capture active'
-                          : 'Tap to grant in system settings',
-                      isPositive: _permissions.overlay,
-                      statusText: _permissions.overlay ? 'Active' : 'Setup',
-                      onTap: () async {
-                        await PlatformBridge.instance.openOverlaySettings();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 12),
-                    _buildServiceTile(
-                      icon: CupertinoIcons.battery_charging,
-                      title: 'Background Activity',
-                      subtitle: _permissions.batteryIgnored
-                          ? 'Unrestricted background running'
-                          : 'Tap to prevent Android from sleeping Corda',
-                      isPositive: _permissions.batteryIgnored,
-                      statusText: _permissions.batteryIgnored ? 'Unrestricted' : 'Optimized',
-                      onTap: () async {
-                        await PlatformBridge.instance.openBatterySettings();
-                      },
-                    ),
+                       title: 'Background Sync',
+                       subtitle: _isServiceRunning ? 'Connected & ready to sync in background' : 'Background continuity paused',
+                       isPositive: _isServiceRunning,
+                       statusText: _isServiceRunning ? 'Active' : 'Paused',
+                       trailing: CupertinoSwitch(
+                         value: _isServiceRunning,
+                         activeTrackColor: CordaTheme.accentBlue,
+                         onChanged: (val) => _toggleService(val),
+                       ),
+                     ),
+                     const SizedBox(height: 12),
+                     const Divider(height: 1),
+                     const SizedBox(height: 12),
+                     _buildServiceTile(
+                       icon: CupertinoIcons.doc_on_clipboard_fill,
+                       title: 'Universal Clipboard',
+                       subtitle: _permissions.accessibility
+                           ? 'Automatic cross-device copy active'
+                           : 'Tap to enable in accessibility settings',
+                       isPositive: _permissions.accessibility,
+                       statusText: _permissions.accessibility ? 'Active' : 'Setup',
+                       onTap: () async {
+                         await PlatformBridge.instance.openAccessibilitySettings();
+                       },
+                     ),
+                     const SizedBox(height: 12),
+                     const Divider(height: 1),
+                     const SizedBox(height: 12),
+                     _buildServiceTile(
+                       icon: CupertinoIcons.layers_alt_fill,
+                       title: 'Instant Capture',
+                       subtitle: _permissions.overlay
+                           ? 'Instant in-app copy capture active'
+                           : 'Tap to grant in system settings',
+                       isPositive: _permissions.overlay,
+                       statusText: _permissions.overlay ? 'Active' : 'Setup',
+                       onTap: () async {
+                         await PlatformBridge.instance.openOverlaySettings();
+                       },
+                     ),
+                     const SizedBox(height: 12),
+                     const Divider(height: 1),
+                     const SizedBox(height: 12),
+                     _buildServiceTile(
+                       icon: CupertinoIcons.battery_charging,
+                       title: 'Background Activity',
+                       subtitle: _permissions.batteryIgnored
+                           ? 'Unrestricted battery activity enabled'
+                           : 'Tap to prevent Android from sleeping Corda',
+                       isPositive: _permissions.batteryIgnored,
+                       statusText: _permissions.batteryIgnored ? 'Unrestricted' : 'Optimized',
+                       onTap: () async {
+                         await PlatformBridge.instance.openBatterySettings();
+                       },
+                     ),
                   ],
                 ),
               ),
@@ -1128,7 +1128,7 @@ class _AppPickerBottomSheetState extends State<_AppPickerBottomSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pilih Aplikasi',
+                      'Select Application',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -1137,7 +1137,7 @@ class _AppPickerBottomSheetState extends State<_AppPickerBottomSheet> {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Pilih aplikasi untuk ditambahkan ke whitelist notifikasi',
+                      'Choose an application to mirror or exclude',
                       style: TextStyle(
                         fontSize: 11,
                         color: CordaTheme.textSecondary,
@@ -1173,7 +1173,7 @@ class _AppPickerBottomSheetState extends State<_AppPickerBottomSheet> {
                       controller: _searchCtrl,
                       style: const TextStyle(fontSize: 13, color: Colors.white),
                       decoration: const InputDecoration(
-                        hintText: 'Cari aplikasi terinstall...',
+                        hintText: 'Search installed applications...',
                         hintStyle: TextStyle(fontSize: 12, color: CordaTheme.textMuted),
                         border: InputBorder.none,
                         isDense: true,
@@ -1211,8 +1211,8 @@ class _AppPickerBottomSheetState extends State<_AppPickerBottomSheet> {
                             const SizedBox(height: 8),
                             Text(
                               _searchCtrl.text.isEmpty
-                                  ? 'Semua aplikasi terinstall sudah ditambahkan'
-                                  : 'Tidak ada aplikasi yang cocok',
+                                  ? 'All installed applications have been added'
+                                  : 'No matching applications found',
                               style: const TextStyle(fontSize: 12, color: CordaTheme.textSecondary),
                             ),
                           ],

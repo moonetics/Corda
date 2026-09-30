@@ -51,7 +51,7 @@ public final class MacClipboardObserver: ObservableObject {
     /// while registering its hash to prevent echoing back.
     public func writeRemoteText(_ text: String) {
         // Discard any synthetic file/folder preview labels
-        if text.hasPrefix("🖼️ ") || text.hasPrefix("📁 ") {
+        if text.hasPrefix("[File: ") || text.hasPrefix("🖼️ ") || text.hasPrefix("📁 ") {
             #if DEBUG
             print("[Corda Clipboard] Discarding synthetic file label from remote text write: \(text)")
             #endif
@@ -94,7 +94,7 @@ public final class MacClipboardObserver: ObservableObject {
             }
 
             self.changeCount = pasteboard.changeCount
-            self.lastCopiedText = isImage ? "🖼️ \(localURL.lastPathComponent)" : "📁 \(localURL.lastPathComponent)"
+            self.lastCopiedText = localURL.lastPathComponent
             self.lastChangeTimestamp = Date()
             NSSound(named: "Pop")?.play()
         }
@@ -137,7 +137,7 @@ public final class MacClipboardObserver: ObservableObject {
                     let ext = firstURL.pathExtension.lowercased()
                     let mimeType = getMimeType(forExtension: ext)
                     DispatchQueue.main.async {
-                        self.lastCopiedText = "📁 " + firstURL.lastPathComponent
+                        self.lastCopiedText = firstURL.lastPathComponent
                         self.lastChangeTimestamp = Date()
                     }
                     onClipboardFileChanged?(firstURL, mimeType, fileSize, hash)
@@ -171,7 +171,7 @@ public final class MacClipboardObserver: ObservableObject {
                 let tempFile = tempDir.appendingPathComponent("Corda_Clip_\(UUID().uuidString.prefix(8)).png")
                 try? imgData.write(to: tempFile)
                 DispatchQueue.main.async {
-                    self.lastCopiedText = "🖼️ Image (" + ByteCountFormatter.string(fromByteCount: size, countStyle: .file) + ")"
+                    self.lastCopiedText = "Image (" + ByteCountFormatter.string(fromByteCount: size, countStyle: .file) + ")"
                     self.lastChangeTimestamp = Date()
                 }
                 onClipboardFileChanged?(tempFile, "image/png", size, hash)

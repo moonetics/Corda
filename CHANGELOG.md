@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.1] - 2026-10-01
+
+### Added
+- **Native Android NotificationListenerService**:
+  - Implemented `CordaNotificationListenerService` registered in `AndroidManifest.xml` with `BIND_NOTIFICATION_LISTENER_SERVICE`, allowing Corda to appear and be toggled directly in Android's system "Notification access" screen.
+  - Linked permission checking to `isNotificationListenerEnabled` in `MainActivity.kt` and `PlatformBridge.dart`.
+- **Apple-Style Mac Storage Capacity Bar**:
+  - Redesigned macOS sidebar footer to clearly indicate **Mac Storage (Macintosh HD)** for Corda incoming transfers.
+  - Added horizontal progress bar with subtle gradient indicating Used vs Free vs Total GB and utilization percentage.
+
+### Changed
+- **Apple Continuity English Tone & UX Harmonization**:
+  - Standardized all UI copy across macOS and Android into clean, user-friendly Apple Continuity English.
+  - Removed technical debug terms (ports 54321/54322, raw TLS 1.3, Bonjour mDNS, NDJSON).
+  - Eliminated emojis (`🖼️`, `📁`, `🔔`, `🔑`) from copy toasts and system alert titles, using clean phrasing such as `"Copying image to Mac..."`.
+
+---
+
 ## [1.3.0] - 2026-10-01
 
 ### Added
